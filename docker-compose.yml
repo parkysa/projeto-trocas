@@ -1,0 +1,137 @@
+name: projeto-trocas
+
+networks:
+  trocas-network:
+    name: ${DOCKER_NETWORK_NAME}
+    driver: bridge
+
+volumes:
+  users-db-data:
+  ads-db-data:
+  trades-db-data:
+  kafka-data:
+
+services:
+  kafka:
+    image: ${KAFKA_IMAGE}
+    environment:
+      KAFKA_NODE_ID: ${KAFKA_NODE_ID}
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:${KAFKA_CONTAINER_PORT},CONTROLLER://:${KAFKA_CONTROLLER_PORT},PLAINTEXT_HOST://:${KAFKA_EXTERNAL_LISTENER_PORT}
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:${KAFKA_CONTAINER_PORT},PLAINTEXT_HOST://localhost:${KAFKA_EXTERNAL_PORT}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: ${KAFKA_NODE_ID}@kafka:${KAFKA_CONTROLLER_PORT}
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    ports:
+      - "${KAFKA_EXTERNAL_PORT}:${KAFKA_EXTERNAL_LISTENER_PORT}"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      - trocas-network
+
+  users-db:
+    image: ${POSTGRES_IMAGE}
+    environment:
+      POSTGRES_DB: ${USERS_DB_NAME}
+      POSTGRES_USER: ${USERS_DB_USER}
+      POSTGRES_PASSWORD: ${USERS_DB_PASSWORD}
+    volumes:
+      - users-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${USERS_DB_USER} -d ${USERS_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - trocas-network
+
+  ads-db:
+    image: ${POSTGRES_IMAGE}
+    environment:
+      POSTGRES_DB: ${ADS_DB_NAME}
+      POSTGRES_USER: ${ADS_DB_USER}
+      POSTGRES_PASSWORD: ${ADS_DB_PASSWORD}
+    volumes:
+      - ads-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ADS_DB_USER} -d ${ADS_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - trocas-network
+
+  trades-db:
+    image: ${POSTGRES_IMAGE}
+    environment:
+      POSTGRES_DB: ${TRADES_DB_NAME}
+      POSTGRES_USER: ${TRADES_DB_USER}
+      POSTGRES_PASSWORD: ${TRADES_DB_PASSWORD}
+    volumes:
+      - trades-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TRADES_DB_USER} -d ${TRADES_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - trocas-network
+
+  bff:
+    build:
+      context: .
+      dockerfile: services/bff/Dockerfile
+    environment:
+      BFF_HOST: ${BFF_HOST}
+      BFF_PORT: ${BFF_PORT}
+    ports:
+      - "${BFF_PORT}:${BFF_PORT}"
+    networks:
+      - trocas-network
+
+  users:
+    build:
+      context: .
+      dockerfile: services/users/Dockerfile
+    environment:
+      USERS_HOST: ${USERS_HOST}
+      USERS_PORT: ${USERS_PORT}
+    ports:
+      - "${USERS_PORT}:${USERS_PORT}"
+    networks:
+      - trocas-network
+
+  ads:
+    build:
+      context: .
+      dockerfile: services/ads/Dockerfile
+    environment:
+      ADS_HOST: ${ADS_HOST}
+      ADS_PORT: ${ADS_PORT}
+    ports:
+      - "${ADS_PORT}:${ADS_PORT}"
+    networks:
+      - trocas-network
+
+  trades:
+    build:
+      context: .
+      dockerfile: services/trades/Dockerfile
+    environment:
+      TRADES_HOST: ${TRADES_HOST}
+      TRADES_PORT: ${TRADES_PORT}
+    ports:
+      - "${TRADES_PORT}:${TRADES_PORT}"
+    networks:
+      - trocas-network
