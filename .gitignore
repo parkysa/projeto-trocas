@@ -46,6 +46,7 @@ dist/
 .coverage
 .coverage.*
 htmlcov/
+insomnia/
 
 # ==========================================
 # Type Checkers / Linters

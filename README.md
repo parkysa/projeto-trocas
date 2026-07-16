@@ -48,6 +48,23 @@ Endpoints de verificação:
 - Ads: `GET http://localhost:8002/health`
 - Trades: `GET http://localhost:8003/health`
 
+## Visualizando o Kafka no navegador (kafka-ui)
+
+Com `docker compose up` rodando, acesse **http://localhost:8080**:
+
+1. Clique no cluster **local**.
+2. Vá em **Topics** e escolha um tópico (ex.: `users.registered`).
+3. Aba **Messages** → dá para ver o payload de cada evento publicado pelo Users e consumido pelo BFF.
+
 ## Escopo da Feature 000 (Bootstrap)
 
 Esta feature prepara apenas a infraestrutura: estrutura do monorepo, Docker Compose, Kafka, bancos PostgreSQL e servidores FastAPI com `/health`. Não implementa regras de negócio, WebSocket, ORM/persistência, autenticação ou comunicação entre microsserviços.
+
+## Feature 001 (Authentication)
+
+O BFF expõe cadastro e login, encaminhando os comandos ao serviço Users via Kafka:
+
+- `POST /register` — `{"name", "email", "password"}` → `201` com `{"id", "name", "email"}`, ou `409` se o email já estiver cadastrado.
+- `POST /login` — `{"email", "password"}` → `200` com `{"access_token", "token_type"}`, ou `401` se as credenciais forem inválidas.
+
+O serviço Users é o único responsável por cadastro, login, hash de senha (bcrypt) e geração/validação de JWT (HS256). A senha nunca é armazenada em texto puro.

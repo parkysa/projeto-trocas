@@ -95,8 +95,13 @@ services:
     environment:
       BFF_HOST: ${BFF_HOST}
       BFF_PORT: ${BFF_PORT}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      BFF_KAFKA_REPLY_TIMEOUT_SECONDS: ${BFF_KAFKA_REPLY_TIMEOUT_SECONDS}
     ports:
       - "${BFF_PORT}:${BFF_PORT}"
+    depends_on:
+      kafka:
+        condition: service_healthy
     networks:
       - trocas-network
 
@@ -107,8 +112,22 @@ services:
     environment:
       USERS_HOST: ${USERS_HOST}
       USERS_PORT: ${USERS_PORT}
+      USERS_DB_HOST: ${USERS_DB_HOST}
+      USERS_DB_PORT: ${USERS_DB_PORT}
+      USERS_DB_NAME: ${USERS_DB_NAME}
+      USERS_DB_USER: ${USERS_DB_USER}
+      USERS_DB_PASSWORD: ${USERS_DB_PASSWORD}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: ${JWT_ALGORITHM}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
     ports:
       - "${USERS_PORT}:${USERS_PORT}"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      users-db:
+        condition: service_healthy
     networks:
       - trocas-network
 
@@ -133,5 +152,18 @@ services:
       TRADES_PORT: ${TRADES_PORT}
     ports:
       - "${TRADES_PORT}:${TRADES_PORT}"
+    networks:
+      - trocas-network
+
+  kafka-ui:
+    image: ${KAFKA_UI_IMAGE}
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:${KAFKA_CONTAINER_PORT}
+    ports:
+      - "${KAFKA_UI_PORT}:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
     networks:
       - trocas-network
