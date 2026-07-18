@@ -114,3 +114,11 @@ O BFF expõe o aceite e a recusa de uma solicitação de troca, encaminhando os 
 - `POST /trades/{id}/reject` — mesma autenticação/autorização → `200` com `{"status": "REJECTED"}`, com as mesmas falhas possíveis (exceto o conflito de anúncio já negociado, que só se aplica ao aceite).
 
 Reutiliza a tabela `trades` da Feature 005 (apenas o campo `status` é atualizado). Como somente o proprietário do anúncio solicitado (`target_ad_id`) pode decidir, o Trades consulta o serviço Ads via Kafka (`ads.get_by_id`) para confirmar o dono do anúncio antes de autorizar a decisão. Ao aceitar, o Trades garante — checando as próprias solicitações já `ACCEPTED` — que nenhum dos dois anúncios já participa de outra troca aceita, atualiza o status para `ACCEPTED` e avisa o serviço Ads (comando interno, best-effort, `ads.mark_unavailable`) para marcar ambos os anúncios como indisponíveis; a partir daí eles deixam de aparecer em `GET /ads/search` (Feature 004). Cancelamento e notificações pertencem a features futuras.
+
+## Feature 007 (Trade Cancel)
+
+O BFF expõe o cancelamento de uma solicitação de troca, encaminhando o comando ao serviço Trades via Kafka:
+
+- `POST /trades/{id}/cancel` — requer `Authorization: Bearer <token>` → `200` com `{"status": "CANCELLED"}`, ou falha (`404` se a troca não existir, `403` se o usuário não for quem criou a solicitação, `409` se ela não estiver mais `PENDING`).
+
+Reutiliza a tabela `trades` (apenas o campo `status` é atualizado) e o `requester_id` já armazenado na solicitação — diferente do aceite/recusa, o cancelamento não precisa consultar o serviço Ads, pois quem pode cancelar é sempre o próprio solicitante. O cancelamento só é permitido enquanto a troca estiver `PENDING` e não afeta anúncios já envolvidos em trocas aceitas. Notificações pertencem a uma feature futura.

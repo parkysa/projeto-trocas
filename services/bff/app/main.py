@@ -33,6 +33,7 @@ TOPIC_ADS_SEARCH = "ads.search"
 TOPIC_TRADES_REQUEST = "trades.request"
 TOPIC_TRADES_ACCEPT = "trades.accept"
 TOPIC_TRADES_REJECT = "trades.reject"
+TOPIC_TRADES_CANCEL = "trades.cancel"
 
 
 def _ad_operation_status_code(reason: str) -> int:
@@ -45,6 +46,14 @@ def _trade_request_failed_status_code(reason: str) -> int:
 
 def _trade_decision_failed_status_code(reason: str) -> int:
     if reason in ("trade_not_found", "target_ad_not_found"):
+        return 404
+    if reason == "forbidden":
+        return 403
+    return 409
+
+
+def _trade_cancel_failed_status_code(reason: str) -> int:
+    if reason == "trade_not_found":
         return 404
     if reason == "forbidden":
         return 403
@@ -237,6 +246,24 @@ async def accept_trade(trade_id: str, user_id: str = Depends(get_current_user_id
     if topic == "trades.decision_failed":
         raise HTTPException(
             status_code=_trade_decision_failed_status_code(payload["reason"]),
+            detail=payload["reason"],
+        )
+
+    return TradeDecisionResponse(status=payload["status"])
+
+
+@app.post("/trades/{trade_id}/cancel", response_model=TradeDecisionResponse)
+async def cancel_trade(trade_id: str, user_id: str = Depends(get_current_user_id)):
+    try:
+        topic, payload = await client.request(
+            TOPIC_TRADES_CANCEL, {"trade_id": trade_id, "canceler_id": user_id}
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Timed out waiting for Trades service")
+
+    if topic == "trades.cancel_failed":
+        raise HTTPException(
+            status_code=_trade_cancel_failed_status_code(payload["reason"]),
             detail=payload["reason"],
         )
 

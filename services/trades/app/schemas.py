@@ -38,3 +38,17 @@ class TradeRejectedEvent(BaseModel):
 
 class TradeDecisionFailedEvent(BaseModel):
     reason: str
+
+
+class CancelTradeCommand(BaseModel):
+    trade_id: str
+    canceler_id: str
+
+
+class TradeCancelledEvent(BaseModel):
+    trade_id: str
+    status: str
+
+
+class TradeCancelFailedEvent(BaseModel):
+    reason: str

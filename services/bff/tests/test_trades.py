@@ -37,3 +37,9 @@ def test_reject_trade_requires_authentication():
     response = client.post("/trades/some-id/reject")
 
     assert response.status_code == 401
+
+
+def test_cancel_trade_requires_authentication():
+    response = client.post("/trades/some-id/cancel")
+
+    assert response.status_code == 401

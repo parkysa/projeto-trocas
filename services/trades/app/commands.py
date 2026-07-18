@@ -9,9 +9,12 @@ from app.models import Trade
 from app.repository import TradeRepository
 from app.schemas import (
     AcceptTradeCommand,
+    CancelTradeCommand,
     RejectTradeCommand,
     RequestTradeCommand,
     TradeAcceptedEvent,
+    TradeCancelFailedEvent,
+    TradeCancelledEvent,
     TradeDecisionFailedEvent,
     TradeRejectedEvent,
     TradeRequestedEvent,
@@ -23,6 +26,8 @@ TOPIC_REQUEST_FAILED = "trades.request_failed"
 TOPIC_ACCEPTED = "trades.accepted"
 TOPIC_REJECTED = "trades.rejected"
 TOPIC_DECISION_FAILED = "trades.decision_failed"
+TOPIC_CANCELLED = "trades.cancelled"
+TOPIC_CANCEL_FAILED = "trades.cancel_failed"
 
 
 def _create_trade(command: RequestTradeCommand) -> Trade:
@@ -181,3 +186,35 @@ async def handle_reject(payload: dict, correlation_id: str | None) -> None:
 
     event = TradeRejectedEvent(trade_id=str(result.id), status=result.status)
     await producer.publish(TOPIC_REJECTED, event.model_dump(), correlation_id)
+
+
+def _cancel_trade(command: CancelTradeCommand) -> tuple[bool, Trade | str]:
+    session = SessionLocal()
+    try:
+        repository = TradeRepository(session)
+        trade = repository.get_by_id(command.trade_id)
+        if trade is None:
+            return False, "trade_not_found"
+        if trade.status != "PENDING":
+            return False, "trade_not_pending"
+        if str(trade.requester_id) != command.canceler_id:
+            return False, "forbidden"
+        return True, repository.update_status(trade, status="CANCELLED")
+    finally:
+        session.close()
+
+
+async def handle_cancel(payload: dict, correlation_id: str | None) -> None:
+    try:
+        command = CancelTradeCommand.model_validate(payload)
+    except ValidationError:
+        return
+
+    success, result = await asyncio.to_thread(_cancel_trade, command)
+    if not success:
+        event = TradeCancelFailedEvent(reason=result)
+        await producer.publish(TOPIC_CANCEL_FAILED, event.model_dump(), correlation_id)
+        return
+
+    event = TradeCancelledEvent(trade_id=str(result.id), status=result.status)
+    await producer.publish(TOPIC_CANCELLED, event.model_dump(), correlation_id)
