@@ -32,3 +32,19 @@ class ProfileResponse(BaseModel):
 class UpdateProfileRequest(BaseModel):
     name: str
     email: EmailStr
+
+
+class CreateAdRequest(BaseModel):
+    title: str
+    description: str
+
+
+class UpdateAdRequest(BaseModel):
+    title: str
+    description: str
+
+
+class AdResponse(BaseModel):
+    id: str
+    title: str
+    description: str

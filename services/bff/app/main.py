@@ -1,14 +1,17 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 
 from app.kafka_client import client
 from app.schemas import (
+    AdResponse,
+    CreateAdRequest,
     LoginRequest,
     LoginResponse,
     ProfileResponse,
     RegisterRequest,
     RegisterResponse,
+    UpdateAdRequest,
     UpdateProfileRequest,
 )
 from app.security import get_current_user_id
@@ -17,6 +20,14 @@ TOPIC_REGISTER = "users.register"
 TOPIC_LOGIN = "users.login"
 TOPIC_GET_PROFILE = "users.get_profile"
 TOPIC_UPDATE_PROFILE = "users.update_profile"
+TOPIC_ADS_CREATE = "ads.create"
+TOPIC_ADS_LIST_BY_OWNER = "ads.list_by_owner"
+TOPIC_ADS_UPDATE = "ads.update"
+TOPIC_ADS_DELETE = "ads.delete"
+
+
+def _ad_operation_status_code(reason: str) -> int:
+    return 404 if reason == "ad_not_found" else 403
 
 
 @asynccontextmanager
@@ -86,3 +97,68 @@ async def update_profile(
         raise HTTPException(status_code=409, detail=payload["reason"])
 
     return ProfileResponse(id=payload["id"], name=payload["name"], email=payload["email"])
+
+
+@app.post("/ads", response_model=AdResponse, status_code=201)
+async def create_ad(request: CreateAdRequest, user_id: str = Depends(get_current_user_id)):
+    try:
+        topic, payload = await client.request(
+            TOPIC_ADS_CREATE,
+            {"owner_id": user_id, "title": request.title, "description": request.description},
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Timed out waiting for Ads service")
+
+    return AdResponse(id=payload["id"], title=payload["title"], description=payload["description"])
+
+
+@app.get("/ads", response_model=list[AdResponse])
+async def list_ads(user_id: str = Depends(get_current_user_id)):
+    try:
+        topic, payload = await client.request(TOPIC_ADS_LIST_BY_OWNER, {"owner_id": user_id})
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Timed out waiting for Ads service")
+
+    return [AdResponse(**ad) for ad in payload["ads"]]
+
+
+@app.put("/ads/{ad_id}", response_model=AdResponse)
+async def update_ad(
+    ad_id: str, request: UpdateAdRequest, user_id: str = Depends(get_current_user_id)
+):
+    try:
+        topic, payload = await client.request(
+            TOPIC_ADS_UPDATE,
+            {
+                "ad_id": ad_id,
+                "owner_id": user_id,
+                "title": request.title,
+                "description": request.description,
+            },
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Timed out waiting for Ads service")
+
+    if topic == "ads.operation_failed":
+        raise HTTPException(
+            status_code=_ad_operation_status_code(payload["reason"]), detail=payload["reason"]
+        )
+
+    return AdResponse(id=payload["id"], title=payload["title"], description=payload["description"])
+
+
+@app.delete("/ads/{ad_id}", status_code=204)
+async def delete_ad(ad_id: str, user_id: str = Depends(get_current_user_id)):
+    try:
+        topic, payload = await client.request(
+            TOPIC_ADS_DELETE, {"ad_id": ad_id, "owner_id": user_id}
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Timed out waiting for Ads service")
+
+    if topic == "ads.operation_failed":
+        raise HTTPException(
+            status_code=_ad_operation_status_code(payload["reason"]), detail=payload["reason"]
+        )
+
+    return Response(status_code=204)

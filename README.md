@@ -77,3 +77,14 @@ O BFF expõe a consulta e atualização do perfil do usuário autenticado, encam
 - `PUT /me` — requer `Authorization: Bearer <token>` e `{"name", "email"}` → `200` com o perfil atualizado, ou `409` se o email já estiver em uso por outro usuário.
 
 O BFF valida o JWT para identificar o usuário autenticado antes de encaminhar o comando; toda regra de negócio do perfil (unicidade de email, persistência) permanece no serviço Users.
+
+## Feature 003 (Ads)
+
+O BFF expõe o gerenciamento de anúncios do usuário autenticado, encaminhando os comandos ao serviço Ads via Kafka:
+
+- `POST /ads` — requer `Authorization: Bearer <token>` e `{"title", "description"}` → `201` com `{"id", "title", "description"}`.
+- `GET /ads` — requer `Authorization: Bearer <token>` → `200` com a lista dos anúncios do usuário.
+- `PUT /ads/{id}` — requer `Authorization: Bearer <token>` e `{"title", "description"}` → `200` com o anúncio atualizado, `404` se o anúncio não existir, ou `403` se pertencer a outro usuário.
+- `DELETE /ads/{id}` — requer `Authorization: Bearer <token>` → `204`, `404` se o anúncio não existir, ou `403` se pertencer a outro usuário.
+
+O BFF identifica o usuário a partir do JWT (mesmo mecanismo da Feature 002) e encaminha o `owner_id` ao serviço Ads; toda regra de negócio (posse do anúncio, persistência) permanece no serviço Ads, que possui banco próprio (`ads_db`).

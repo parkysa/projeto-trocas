@@ -140,8 +140,19 @@ services:
     environment:
       ADS_HOST: ${ADS_HOST}
       ADS_PORT: ${ADS_PORT}
+      ADS_DB_HOST: ${ADS_DB_HOST}
+      ADS_DB_PORT: ${ADS_DB_PORT}
+      ADS_DB_NAME: ${ADS_DB_NAME}
+      ADS_DB_USER: ${ADS_DB_USER}
+      ADS_DB_PASSWORD: ${ADS_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
     ports:
       - "${ADS_PORT}:${ADS_PORT}"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      ads-db:
+        condition: service_healthy
     networks:
       - trocas-network
 

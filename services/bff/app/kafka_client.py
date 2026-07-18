@@ -15,6 +15,11 @@ REPLY_TOPICS = (
     "users.profile_found",
     "users.profile_updated",
     "users.profile_update_failed",
+    "ads.created",
+    "ads.listed",
+    "ads.updated",
+    "ads.deleted",
+    "ads.operation_failed",
 )
 
 
