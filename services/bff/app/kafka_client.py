@@ -29,6 +29,7 @@ REPLY_TOPICS = (
     "trades.decision_failed",
     "trades.cancelled",
     "trades.cancel_failed",
+    "notifications.listed",
 )
 
 

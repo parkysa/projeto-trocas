@@ -69,7 +69,9 @@ async def handle_request(payload: dict, correlation_id: str | None) -> None:
 
     trade = await asyncio.to_thread(_create_trade, command)
 
-    event = TradeRequestedEvent(trade_id=str(trade.id), status=trade.status)
+    event = TradeRequestedEvent(
+        trade_id=str(trade.id), status=trade.status, target_owner_id=target_ad["owner_id"]
+    )
     await producer.publish(TOPIC_REQUESTED, event.model_dump(), correlation_id)
 
 
@@ -156,7 +158,9 @@ async def handle_accept(payload: dict, correlation_id: str | None) -> None:
     await ads_client.mark_unavailable(str(result.requester_ad_id))
     await ads_client.mark_unavailable(str(result.target_ad_id))
 
-    event = TradeAcceptedEvent(trade_id=str(result.id), status=result.status)
+    event = TradeAcceptedEvent(
+        trade_id=str(result.id), status=result.status, requester_id=str(result.requester_id)
+    )
     await producer.publish(TOPIC_ACCEPTED, event.model_dump(), correlation_id)
 
 
@@ -184,7 +188,9 @@ async def handle_reject(payload: dict, correlation_id: str | None) -> None:
         await _publish_decision_failed(result, correlation_id)
         return
 
-    event = TradeRejectedEvent(trade_id=str(result.id), status=result.status)
+    event = TradeRejectedEvent(
+        trade_id=str(result.id), status=result.status, requester_id=str(result.requester_id)
+    )
     await producer.publish(TOPIC_REJECTED, event.model_dump(), correlation_id)
 
 
@@ -216,5 +222,10 @@ async def handle_cancel(payload: dict, correlation_id: str | None) -> None:
         await producer.publish(TOPIC_CANCEL_FAILED, event.model_dump(), correlation_id)
         return
 
-    event = TradeCancelledEvent(trade_id=str(result.id), status=result.status)
+    target_ad = await ads_client.get_ad_by_id(str(result.target_ad_id))
+    target_owner_id = target_ad["owner_id"] if target_ad is not None else ""
+
+    event = TradeCancelledEvent(
+        trade_id=str(result.id), status=result.status, target_owner_id=target_owner_id
+    )
     await producer.publish(TOPIC_CANCELLED, event.model_dump(), correlation_id)

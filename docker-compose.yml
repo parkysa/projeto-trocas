@@ -9,6 +9,7 @@ volumes:
   users-db-data:
   ads-db-data:
   trades-db-data:
+  notifications-db-data:
   kafka-data:
 
 services:
@@ -82,6 +83,22 @@ services:
       - trades-db-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${TRADES_DB_USER} -d ${TRADES_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - trocas-network
+
+  notifications-db:
+    image: ${POSTGRES_IMAGE}
+    environment:
+      POSTGRES_DB: ${NOTIFICATIONS_DB_NAME}
+      POSTGRES_USER: ${NOTIFICATIONS_DB_USER}
+      POSTGRES_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD}
+    volumes:
+      - notifications-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NOTIFICATIONS_DB_USER} -d ${NOTIFICATIONS_DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -176,6 +193,29 @@ services:
       kafka:
         condition: service_healthy
       trades-db:
+        condition: service_healthy
+    networks:
+      - trocas-network
+
+  notifications:
+    build:
+      context: .
+      dockerfile: services/notifications/Dockerfile
+    environment:
+      NOTIFICATIONS_HOST: ${NOTIFICATIONS_HOST}
+      NOTIFICATIONS_PORT: ${NOTIFICATIONS_PORT}
+      NOTIFICATIONS_DB_HOST: ${NOTIFICATIONS_DB_HOST}
+      NOTIFICATIONS_DB_PORT: ${NOTIFICATIONS_DB_PORT}
+      NOTIFICATIONS_DB_NAME: ${NOTIFICATIONS_DB_NAME}
+      NOTIFICATIONS_DB_USER: ${NOTIFICATIONS_DB_USER}
+      NOTIFICATIONS_DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+    ports:
+      - "${NOTIFICATIONS_PORT}:${NOTIFICATIONS_PORT}"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      notifications-db:
         condition: service_healthy
     networks:
       - trocas-network

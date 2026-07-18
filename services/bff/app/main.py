@@ -10,6 +10,7 @@ from app.schemas import (
     CreateTradeRequest,
     LoginRequest,
     LoginResponse,
+    NotificationResponse,
     ProfileResponse,
     RegisterRequest,
     RegisterResponse,
@@ -34,6 +35,7 @@ TOPIC_TRADES_REQUEST = "trades.request"
 TOPIC_TRADES_ACCEPT = "trades.accept"
 TOPIC_TRADES_REJECT = "trades.reject"
 TOPIC_TRADES_CANCEL = "trades.cancel"
+TOPIC_NOTIFICATIONS_LIST = "notifications.list"
 
 
 def _ad_operation_status_code(reason: str) -> int:
@@ -268,6 +270,20 @@ async def cancel_trade(trade_id: str, user_id: str = Depends(get_current_user_id
         )
 
     return TradeDecisionResponse(status=payload["status"])
+
+
+@app.get("/notifications", response_model=list[NotificationResponse])
+async def list_notifications(user_id: str = Depends(get_current_user_id)):
+    try:
+        topic, payload = await client.request(
+            TOPIC_NOTIFICATIONS_LIST, {"user_id": user_id}
+        )
+    except TimeoutError:
+        raise HTTPException(
+            status_code=504, detail="Timed out waiting for Notifications service"
+        )
+
+    return [NotificationResponse(**notification) for notification in payload]
 
 
 @app.post("/trades/{trade_id}/reject", response_model=TradeDecisionResponse)

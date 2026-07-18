@@ -10,6 +10,7 @@ class RequestTradeCommand(BaseModel):
 class TradeRequestedEvent(BaseModel):
     trade_id: str
     status: str
+    target_owner_id: str
 
 
 class TradeRequestFailedEvent(BaseModel):
@@ -29,11 +30,13 @@ class RejectTradeCommand(BaseModel):
 class TradeAcceptedEvent(BaseModel):
     trade_id: str
     status: str
+    requester_id: str
 
 
 class TradeRejectedEvent(BaseModel):
     trade_id: str
     status: str
+    requester_id: str
 
 
 class TradeDecisionFailedEvent(BaseModel):
@@ -48,6 +51,7 @@ class CancelTradeCommand(BaseModel):
 class TradeCancelledEvent(BaseModel):
     trade_id: str
     status: str
+    target_owner_id: str
 
 
 class TradeCancelFailedEvent(BaseModel):

@@ -8,8 +8,9 @@ Plataforma de permutas de itens, composta por microsserviços.
 - **Users** (`services/users`) — domínio de usuários.
 - **Ads** (`services/ads`) — domínio de anúncios.
 - **Trades** (`services/trades`) — domínio das permutas.
-- **Apache Kafka** — broker disponível para comunicação futura entre serviços.
-- **PostgreSQL** — um banco independente por microsserviço (`users_db`, `ads_db`, `trades_db`).
+- **Notifications** (`services/notifications`) — registro de notificações dos usuários.
+- **Apache Kafka** — broker de comunicação entre os microsserviços.
+- **PostgreSQL** — um banco independente por microsserviço (`users_db`, `ads_db`, `trades_db`, `notifications_db`).
 
 ## Estrutura
 
@@ -19,6 +20,7 @@ services/
   users/
   ads/
   trades/
+  notifications/
 docker-compose.yml
 .env
 ```
@@ -47,6 +49,7 @@ Endpoints de verificação:
 - Users: `GET http://localhost:8001/health`
 - Ads: `GET http://localhost:8002/health`
 - Trades: `GET http://localhost:8003/health`
+- Notifications: `GET http://localhost:8004/health`
 
 ## Visualizando o Kafka no navegador (kafka-ui)
 
@@ -122,3 +125,18 @@ O BFF expõe o cancelamento de uma solicitação de troca, encaminhando o comand
 - `POST /trades/{id}/cancel` — requer `Authorization: Bearer <token>` → `200` com `{"status": "CANCELLED"}`, ou falha (`404` se a troca não existir, `403` se o usuário não for quem criou a solicitação, `409` se ela não estiver mais `PENDING`).
 
 Reutiliza a tabela `trades` (apenas o campo `status` é atualizado) e o `requester_id` já armazenado na solicitação — diferente do aceite/recusa, o cancelamento não precisa consultar o serviço Ads, pois quem pode cancelar é sempre o próprio solicitante. O cancelamento só é permitido enquanto a troca estiver `PENDING` e não afeta anúncios já envolvidos em trocas aceitas. Notificações pertencem a uma feature futura.
+
+## Feature 008 (Notifications)
+
+Novo microsserviço **Notifications**, com banco próprio (`notifications_db`), que apenas consome eventos do Kafka e registra notificações — nenhum outro serviço depende dele.
+
+- `GET /notifications` — requer `Authorization: Bearer <token>` → `200` com a lista das notificações do usuário autenticado (mais recentes primeiro): `[{"id", "type", "message", "created_at"}]`.
+
+Eventos consumidos e a notificação gerada:
+
+- `users.registered` → notifica o usuário cadastrado (`USER_REGISTERED`).
+- `trades.requested` → notifica o dono do anúncio solicitado (`TRADE_REQUEST`).
+- `trades.accepted` / `trades.rejected` → notifica quem fez a solicitação (`TRADE_ACCEPTED` / `TRADE_REJECTED`).
+- `trades.cancelled` → notifica o dono do anúncio solicitado (`TRADE_CANCELLED`).
+
+Como os eventos `trades.requested/accepted/rejected/cancelled` originais (Features 005–007) carregavam apenas `trade_id` e `status`, o serviço Trades passou a incluir também a identidade do usuário a ser notificado (`target_owner_id` ou `requester_id`, conforme o caso) — um campo adicional no payload, sem alterar os campos já existentes nem o comportamento dos consumidores atuais (BFF). O Notifications não expõe nem consome nenhum outro comando além da consulta; envio de e-mail/SMS/push, WebSocket e marcação de notificações como lidas ficam fora do escopo.

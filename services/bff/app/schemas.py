@@ -69,3 +69,10 @@ class TradeResponse(BaseModel):
 
 class TradeDecisionResponse(BaseModel):
     status: str
+
+
+class NotificationResponse(BaseModel):
+    id: str
+    type: str
+    message: str
+    created_at: str
