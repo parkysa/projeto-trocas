@@ -13,6 +13,7 @@ from app.schemas import (
     ProfileResponse,
     RegisterRequest,
     RegisterResponse,
+    TradeDecisionResponse,
     TradeResponse,
     UpdateAdRequest,
     UpdateProfileRequest,
@@ -30,6 +31,8 @@ TOPIC_ADS_DELETE = "ads.delete"
 TOPIC_ADS_LIST_AVAILABLE = "ads.list_available"
 TOPIC_ADS_SEARCH = "ads.search"
 TOPIC_TRADES_REQUEST = "trades.request"
+TOPIC_TRADES_ACCEPT = "trades.accept"
+TOPIC_TRADES_REJECT = "trades.reject"
 
 
 def _ad_operation_status_code(reason: str) -> int:
@@ -38,6 +41,14 @@ def _ad_operation_status_code(reason: str) -> int:
 
 def _trade_request_failed_status_code(reason: str) -> int:
     return 404 if reason in ("requester_ad_not_found", "target_ad_not_found") else 400
+
+
+def _trade_decision_failed_status_code(reason: str) -> int:
+    if reason in ("trade_not_found", "target_ad_not_found"):
+        return 404
+    if reason == "forbidden":
+        return 403
+    return 409
 
 
 @asynccontextmanager
@@ -212,3 +223,39 @@ async def create_trade(request: CreateTradeRequest, user_id: str = Depends(get_c
         )
 
     return TradeResponse(id=payload["trade_id"], status=payload["status"])
+
+
+@app.post("/trades/{trade_id}/accept", response_model=TradeDecisionResponse)
+async def accept_trade(trade_id: str, user_id: str = Depends(get_current_user_id)):
+    try:
+        topic, payload = await client.request(
+            TOPIC_TRADES_ACCEPT, {"trade_id": trade_id, "decider_id": user_id}
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Timed out waiting for Trades service")
+
+    if topic == "trades.decision_failed":
+        raise HTTPException(
+            status_code=_trade_decision_failed_status_code(payload["reason"]),
+            detail=payload["reason"],
+        )
+
+    return TradeDecisionResponse(status=payload["status"])
+
+
+@app.post("/trades/{trade_id}/reject", response_model=TradeDecisionResponse)
+async def reject_trade(trade_id: str, user_id: str = Depends(get_current_user_id)):
+    try:
+        topic, payload = await client.request(
+            TOPIC_TRADES_REJECT, {"trade_id": trade_id, "decider_id": user_id}
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Timed out waiting for Trades service")
+
+    if topic == "trades.decision_failed":
+        raise HTTPException(
+            status_code=_trade_decision_failed_status_code(payload["reason"]),
+            detail=payload["reason"],
+        )
+
+    return TradeDecisionResponse(status=payload["status"])

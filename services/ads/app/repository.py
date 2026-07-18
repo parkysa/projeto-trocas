@@ -28,7 +28,9 @@ class AdRepository:
     def list_available(self, exclude_owner_id: str) -> list[Ad]:
         return list(
             self.session.scalars(
-                select(Ad).where(Ad.owner_id != uuid.UUID(exclude_owner_id))
+                select(Ad)
+                .where(Ad.owner_id != uuid.UUID(exclude_owner_id))
+                .where(Ad.is_available.is_(True))
             )
         )
 
@@ -37,6 +39,7 @@ class AdRepository:
             self.session.scalars(
                 select(Ad)
                 .where(Ad.owner_id != uuid.UUID(exclude_owner_id))
+                .where(Ad.is_available.is_(True))
                 .where(Ad.title.ilike(f"%{query}%"))
             )
         )
@@ -51,3 +54,9 @@ class AdRepository:
     def delete(self, ad: Ad) -> None:
         self.session.delete(ad)
         self.session.commit()
+
+    def mark_unavailable(self, ad_id: str) -> None:
+        ad = self.get_by_id(ad_id)
+        if ad is not None:
+            ad.is_available = False
+            self.session.commit()

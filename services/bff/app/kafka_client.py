@@ -24,6 +24,9 @@ REPLY_TOPICS = (
     "ads.search_result",
     "trades.requested",
     "trades.request_failed",
+    "trades.accepted",
+    "trades.rejected",
+    "trades.decision_failed",
 )
 
 

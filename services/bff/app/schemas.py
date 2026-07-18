@@ -65,3 +65,7 @@ class CreateTradeRequest(BaseModel):
 class TradeResponse(BaseModel):
     id: str
     status: str
+
+
+class TradeDecisionResponse(BaseModel):
+    status: str

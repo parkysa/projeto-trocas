@@ -21,6 +21,7 @@ from app.schemas import (
     GetAdByIdCommand,
     ListAdsByOwnerCommand,
     ListAvailableAdsCommand,
+    MarkAdUnavailableCommand,
     SearchAdsCommand,
     UpdateAdCommand,
 )
@@ -243,3 +244,21 @@ async def handle_get_by_id(payload: dict, correlation_id: str | None) -> None:
         id=str(ad.id), owner_id=str(ad.owner_id), title=ad.title, description=ad.description
     )
     await producer.publish(TOPIC_FOUND, event.model_dump(), correlation_id)
+
+
+def _mark_unavailable(ad_id: str) -> None:
+    session = SessionLocal()
+    try:
+        AdRepository(session).mark_unavailable(ad_id)
+    finally:
+        session.close()
+
+
+async def handle_mark_unavailable(payload: dict, correlation_id: str | None) -> None:
+    """Internal, fire-and-forget: used by Trades to flag an ad as no longer tradeable."""
+    try:
+        command = MarkAdUnavailableCommand.model_validate(payload)
+    except ValidationError:
+        return
+
+    await asyncio.to_thread(_mark_unavailable, command.ad_id)

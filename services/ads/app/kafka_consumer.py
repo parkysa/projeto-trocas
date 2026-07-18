@@ -9,6 +9,7 @@ from app.commands import (
     handle_get_by_id,
     handle_list_available,
     handle_list_by_owner,
+    handle_mark_unavailable,
     handle_search,
     handle_update,
 )
@@ -21,6 +22,7 @@ TOPIC_DELETE = "ads.delete"
 TOPIC_LIST_AVAILABLE = "ads.list_available"
 TOPIC_SEARCH = "ads.search"
 TOPIC_GET_BY_ID = "ads.get_by_id"
+TOPIC_MARK_UNAVAILABLE = "ads.mark_unavailable"
 
 _HANDLERS = {
     TOPIC_CREATE: handle_create,
@@ -30,6 +32,7 @@ _HANDLERS = {
     TOPIC_LIST_AVAILABLE: handle_list_available,
     TOPIC_SEARCH: handle_search,
     TOPIC_GET_BY_ID: handle_get_by_id,
+    TOPIC_MARK_UNAVAILABLE: handle_mark_unavailable,
 }
 
 
@@ -46,6 +49,7 @@ class KafkaCommandConsumer:
             TOPIC_LIST_AVAILABLE,
             TOPIC_SEARCH,
             TOPIC_GET_BY_ID,
+            TOPIC_MARK_UNAVAILABLE,
             bootstrap_servers=settings.kafka_bootstrap_servers,
             group_id="ads-service",
         )

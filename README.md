@@ -105,3 +105,12 @@ O BFF expõe a criação de solicitações de troca entre anúncios, encaminhand
 - `POST /trades` — requer `Authorization: Bearer <token>` e `{"requester_ad_id", "target_ad_id"}` → `201` com `{"id", "status": "PENDING"}`, ou falha (`404` se algum anúncio não existir, `400` se o anúncio de destino pertencer ao próprio solicitante).
 
 O serviço Trades possui banco próprio (`trades_db`) e é responsável por toda a regra de negócio da solicitação. Como cada microsserviço tem seu próprio banco, o Trades não acessa a tabela `ads` diretamente: ele consulta o serviço Ads via Kafka (comando interno `ads.get_by_id`, respondido com `ads.found`/`ads.not_found`) para validar que os anúncios existem e que o anúncio de destino não pertence ao solicitante. Esta feature apenas cria a solicitação com status `PENDING` — aceite, recusa, cancelamento e notificações pertencem a features futuras.
+
+## Feature 006 (Trade Decision)
+
+O BFF expõe o aceite e a recusa de uma solicitação de troca, encaminhando os comandos ao serviço Trades via Kafka:
+
+- `POST /trades/{id}/accept` — requer `Authorization: Bearer <token>` → `200` com `{"status": "ACCEPTED"}`, ou falha (`404` se a troca ou o anúncio alvo não existir, `403` se o usuário não for o proprietário do anúncio solicitado, `409` se a troca não estiver mais `PENDING` ou se algum dos anúncios já participar de outra troca aceita).
+- `POST /trades/{id}/reject` — mesma autenticação/autorização → `200` com `{"status": "REJECTED"}`, com as mesmas falhas possíveis (exceto o conflito de anúncio já negociado, que só se aplica ao aceite).
+
+Reutiliza a tabela `trades` da Feature 005 (apenas o campo `status` é atualizado). Como somente o proprietário do anúncio solicitado (`target_ad_id`) pode decidir, o Trades consulta o serviço Ads via Kafka (`ads.get_by_id`) para confirmar o dono do anúncio antes de autorizar a decisão. Ao aceitar, o Trades garante — checando as próprias solicitações já `ACCEPTED` — que nenhum dos dois anúncios já participa de outra troca aceita, atualiza o status para `ACCEPTED` e avisa o serviço Ads (comando interno, best-effort, `ads.mark_unavailable`) para marcar ambos os anúncios como indisponíveis; a partir daí eles deixam de aparecer em `GET /ads/search` (Feature 004). Cancelamento e notificações pertencem a features futuras.

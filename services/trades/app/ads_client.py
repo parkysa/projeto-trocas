@@ -9,6 +9,7 @@ from app.config import settings
 from app.kafka_producer import producer
 
 TOPIC_GET_BY_ID = "ads.get_by_id"
+TOPIC_MARK_UNAVAILABLE = "ads.mark_unavailable"
 REPLY_TOPICS = ("ads.found", "ads.not_found")
 
 
@@ -70,6 +71,10 @@ class AdsClient:
         if topic == "ads.not_found":
             return None
         return payload
+
+    async def mark_unavailable(self, ad_id: str) -> None:
+        """Fire-and-forget: tells Ads to flag the ad as no longer tradeable."""
+        await producer.publish(TOPIC_MARK_UNAVAILABLE, {"ad_id": ad_id}, None)
 
 
 ads_client = AdsClient()

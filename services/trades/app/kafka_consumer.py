@@ -3,13 +3,17 @@ import logging
 
 from aiokafka import AIOKafkaConsumer
 
-from app.commands import handle_request
+from app.commands import handle_accept, handle_reject, handle_request
 from app.config import settings
 
 TOPIC_REQUEST = "trades.request"
+TOPIC_ACCEPT = "trades.accept"
+TOPIC_REJECT = "trades.reject"
 
 _HANDLERS = {
     TOPIC_REQUEST: handle_request,
+    TOPIC_ACCEPT: handle_accept,
+    TOPIC_REJECT: handle_reject,
 }
 
 
@@ -20,6 +24,8 @@ class KafkaCommandConsumer:
     async def start(self) -> None:
         self._consumer = AIOKafkaConsumer(
             TOPIC_REQUEST,
+            TOPIC_ACCEPT,
+            TOPIC_REJECT,
             bootstrap_servers=settings.kafka_bootstrap_servers,
             group_id="trades-service",
         )

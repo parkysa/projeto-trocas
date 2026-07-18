@@ -25,3 +25,15 @@ def test_create_trade_rejects_missing_fields():
     )
 
     assert response.status_code == 422
+
+
+def test_accept_trade_requires_authentication():
+    response = client.post("/trades/some-id/accept")
+
+    assert response.status_code == 401
+
+
+def test_reject_trade_requires_authentication():
+    response = client.post("/trades/some-id/reject")
+
+    assert response.status_code == 401

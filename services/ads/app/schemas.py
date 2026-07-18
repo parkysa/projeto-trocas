@@ -82,3 +82,7 @@ class AdFoundEvent(BaseModel):
 
 class AdNotFoundEvent(BaseModel):
     ad_id: str
+
+
+class MarkAdUnavailableCommand(BaseModel):
+    ad_id: str

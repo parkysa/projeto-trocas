@@ -14,3 +14,27 @@ class TradeRequestedEvent(BaseModel):
 
 class TradeRequestFailedEvent(BaseModel):
     reason: str
+
+
+class AcceptTradeCommand(BaseModel):
+    trade_id: str
+    decider_id: str
+
+
+class RejectTradeCommand(BaseModel):
+    trade_id: str
+    decider_id: str
+
+
+class TradeAcceptedEvent(BaseModel):
+    trade_id: str
+    status: str
+
+
+class TradeRejectedEvent(BaseModel):
+    trade_id: str
+    status: str
+
+
+class TradeDecisionFailedEvent(BaseModel):
+    reason: str
