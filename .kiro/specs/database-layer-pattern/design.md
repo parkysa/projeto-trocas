@@ -82,6 +82,7 @@ Campos específicos por entidade:
 **Trade** (`trades`):
 - `ad_id` (UUID, indexado)
 - `proposer_id` (UUID, indexado)
+- `offered_ad_id` (UUID, indexado) — anúncio que o proponente está oferecendo em troca
 - `status` (String 50, padrão `"pending"`)
 - `purpose_date` (Date) — data em que a proposta foi feita
 - `answer_date` (Date, nullable) — data em que a proposta foi aceita ou recusada
@@ -114,9 +115,21 @@ Funções por serviço:
 
 ## main.py
 
-O `main.py` atual de `ads` e `trades` só tem o endpoint `/health`. É preciso adicionar um `lifespan` que executa `Base.metadata.create_all` via `engine.begin()` antes de a aplicação começar a aceitar requisições. Se o banco não estiver disponível, a inicialização falha com erro claro.
+O `main.py` de cada serviço registra o `lifespan` com `create_all` e expõe as rotas de CRUD da entidade, seguindo o padrão do serviço `users`.
 
-A única diferença entre os dois arquivos é o `title` do `FastAPI`.
+**ads** — rotas:
+- `POST /ads` — cria anúncio (HTTP 201)
+- `GET /ads` — lista com paginação (`skip`, `limit`)
+- `GET /ads/{ad_id}` — busca por UUID (HTTP 404 se não encontrado)
+- `PATCH /ads/{ad_id}` — atualiza parcialmente (HTTP 404 se não encontrado)
+- `DELETE /ads/{ad_id}` — exclui (HTTP 204, HTTP 404 se não encontrado)
+
+**trades** — rotas:
+- `POST /trades` — cria proposta (HTTP 201)
+- `GET /trades` — lista com paginação (`skip`, `limit`)
+- `GET /trades/{trade_id}` — busca por UUID (HTTP 404 se não encontrado)
+- `PATCH /trades/{trade_id}` — atualiza parcialmente (HTTP 404 se não encontrado)
+- `DELETE /trades/{trade_id}` — exclui (HTTP 204, HTTP 404 se não encontrado)
 
 ---
 
@@ -189,8 +202,8 @@ Os containers `ads-db` e `trades-db` já existem e já têm `healthcheck` com `p
 ## Fora do Escopo
 
 - Migrations com Alembic ou qualquer outra ferramenta
-- Autenticação, autorização ou lógica de negócio nos serviços `ads` e `trades`
-- Rotas de API além do `GET /health` já existente
+- Autenticação, autorização ou regras de negócio complexas
+- Rotas de API além das rotas CRUD de `ads` e `trades`
 - Configuração de ambientes de produção ou staging
 - Testes automatizados — cobertos em feature separada
 - Alterações no serviço `users`

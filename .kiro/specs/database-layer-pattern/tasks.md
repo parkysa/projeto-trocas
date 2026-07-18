@@ -24,15 +24,7 @@
 - [ ] Criar `models.py` com o model `Ad` (campos: `id`, `title`, `description`, `owner_id`, `address`, `publication_date`, `accept_terms`, `item_condition`, `created_at`, `updated_at`)
 - [ ] Criar `schemas.py` com `AdCreate`, `AdUpdate` e `AdOut`
 - [ ] Criar `repository.py` com as funções `get_ad`, `list_ads`, `create_ad`, `update_ad` e `delete_ad`
-- [ ] Atualizar `main.py` para registrar `lifespan` que executa `Base.metadata.create_all` na inicialização
-- [ ] Adicionar variáveis de ambiente de banco (`ADS_DB_NAME`, `ADS_DB_USER`, `ADS_DB_PASSWORD`, `ADS_DB_HOST`, `ADS_DB_PORT`) no serviço `ads` do Docker Compose
-- [ ] Adicionar `depends_on` com `condition: service_healthy` apontando para `ads-db` no serviço `ads` do Docker Compose
-
-### Validação
-
-- [ ] Verificar se o container `ads` sobe sem erro após o build
-- [ ] Verificar se a tabela `ads` é criada automaticamente no banco `ads-db`
-- [ ] Verificar se `GET /health` continua respondendo no serviço `ads` (porta 8002)
+- [ ] Atualizar `main.py` para registrar `lifespan`, `create_all` e as rotas CRUD (`POST`, `GET`, `GET /{id}`, `PATCH /{id}`, `DELETE /{id}`)
 
 ---
 
@@ -44,7 +36,7 @@
 - [ ] Criar `models.py` com o model `Trade` (campos: `id`, `ad_id`, `proposer_id`, `status`, `purpose_date`, `answer_date`, `created_at`, `updated_at`)
 - [ ] Criar `schemas.py` com `TradeCreate`, `TradeUpdate` e `TradeOut`
 - [ ] Criar `repository.py` com as funções `get_trade`, `list_trades`, `create_trade`, `update_trade` e `delete_trade`
-- [ ] Atualizar `main.py` para registrar `lifespan` que executa `Base.metadata.create_all` na inicialização
+- [ ] Atualizar `main.py` para registrar `lifespan`, `create_all` e as rotas CRUD (`POST`, `GET`, `GET /{id}`, `PATCH /{id}`, `DELETE /{id}`)
 - [ ] Adicionar variáveis de ambiente de banco (`TRADES_DB_NAME`, `TRADES_DB_USER`, `TRADES_DB_PASSWORD`, `TRADES_DB_HOST`, `TRADES_DB_PORT`) no serviço `trades` do Docker Compose
 - [ ] Adicionar `depends_on` com `condition: service_healthy` apontando para `trades-db` no serviço `trades` do Docker Compose
 
@@ -53,6 +45,7 @@
 - [ ] Verificar se o container `trades` sobe sem erro após o build
 - [ ] Verificar se a tabela `trades` é criada automaticamente no banco `trades-db`
 - [ ] Verificar se `GET /health` continua respondendo no serviço `trades` (porta 8003)
+- [ ] Verificar se as rotas CRUD respondem corretamente em `http://localhost:8003/docs`
 
 ---
 
@@ -67,8 +60,8 @@
 Esta feature **não** deve implementar:
 
 - migrations com Alembic ou qualquer outra ferramenta;
-- autenticação, autorização ou lógica de negócio nos serviços `ads` e `trades`;
-- rotas de API além do `GET /health` já existente;
+- autenticação, autorização ou regras de negócio complexas;
+- rotas de API além das rotas CRUD de `ads` e `trades`;
 - testes automatizados;
 - alterações no serviço `users`;
 - alterações no serviço `bff`.

@@ -127,8 +127,16 @@ services:
     environment:
       ADS_HOST: ${ADS_HOST}
       ADS_PORT: ${ADS_PORT}
+      ADS_DB_NAME: ${ADS_DB_NAME}
+      ADS_DB_USER: ${ADS_DB_USER}
+      ADS_DB_PASSWORD: ${ADS_DB_PASSWORD}
+      ADS_DB_HOST: ads-db
+      ADS_DB_PORT: 5432
     ports:
       - "${ADS_PORT}:${ADS_PORT}"
+    depends_on:
+      ads-db:
+        condition: service_healthy
     networks:
       - trocas-network
 
@@ -139,7 +147,15 @@ services:
     environment:
       TRADES_HOST: ${TRADES_HOST}
       TRADES_PORT: ${TRADES_PORT}
+      TRADES_DB_NAME: ${TRADES_DB_NAME}
+      TRADES_DB_USER: ${TRADES_DB_USER}
+      TRADES_DB_PASSWORD: ${TRADES_DB_PASSWORD}
+      TRADES_DB_HOST: trades-db
+      TRADES_DB_PORT: 5432
     ports:
       - "${TRADES_PORT}:${TRADES_PORT}"
+    depends_on:
+      trades-db:
+        condition: service_healthy
     networks:
       - trocas-network
