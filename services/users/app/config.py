@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     jwt_expiration_minutes: int
 
     kafka_bootstrap_servers: str
+    kafka_retry_attempts: int
+    kafka_retry_delay_seconds: int
+    kafka_dlq_topic: str
 
     @property
     def database_url(self) -> str:

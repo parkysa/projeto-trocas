@@ -140,3 +140,15 @@ Eventos consumidos e a notificação gerada:
 - `trades.cancelled` → notifica o dono do anúncio solicitado (`TRADE_CANCELLED`).
 
 Como os eventos `trades.requested/accepted/rejected/cancelled` originais (Features 005–007) carregavam apenas `trade_id` e `status`, o serviço Trades passou a incluir também a identidade do usuário a ser notificado (`target_owner_id` ou `requester_id`, conforme o caso) — um campo adicional no payload, sem alterar os campos já existentes nem o comportamento dos consumidores atuais (BFF). O Notifications não expõe nem consome nenhum outro comando além da consulta; envio de e-mail/SMS/push, WebSocket e marcação de notificações como lidas ficam fora do escopo.
+
+## Feature 009 (Resilience)
+
+Mecanismos básicos de tolerância a falhas na comunicação via Kafka, transparentes para as funcionalidades já implementadas — nenhum contrato HTTP ou Kafka foi alterado.
+
+- **Timeout** — o BFF já limitava a espera por respostas dos microsserviços (`BFF_KAFKA_REPLY_TIMEOUT_SECONDS`, `TRADES_KAFKA_REPLY_TIMEOUT_SECONDS`, ambos configuráveis via `.env`), retornando `504` quando o tempo é excedido; nenhuma mudança foi necessária aqui.
+- **Retry** — os consumidores Kafka de Users, Ads, Trades e Notifications tentam novamente o processamento de uma mensagem até `KAFKA_RETRY_ATTEMPTS` vezes, aguardando `KAFKA_RETRY_DELAY_SECONDS` entre tentativas, antes de desistir.
+- **Dead Letter Queue** — se todas as tentativas falharem, a mensagem original (tópico, payload e motivo) é publicada no tópico `KAFKA_DLQ_TOPIC` (`dlq`).
+- **Idempotência** — cada consumidor mantém, em memória, o conjunto de mensagens já processadas nesta sessão (identificadas por `tópico + partição + offset`, metadados do próprio Kafka); uma mensagem redelivrada é ignorada em vez de processada novamente.
+- **Logs** — cada tentativa falha, o esgotamento das tentativas e o envio à DLQ são registrados via `logging`.
+
+Novas variáveis de ambiente (compartilhadas por Users, Ads, Trades e Notifications): `KAFKA_RETRY_ATTEMPTS`, `KAFKA_RETRY_DELAY_SECONDS`, `KAFKA_DLQ_TOPIC`. Circuit breaker, métricas, monitoramento e tracing distribuído ficam fora do escopo.
