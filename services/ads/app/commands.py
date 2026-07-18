@@ -9,13 +9,16 @@ from app.repository import AdRepository
 from app.schemas import (
     AdCreatedEvent,
     AdDeletedEvent,
+    AdFoundEvent,
     AdItem,
+    AdNotFoundEvent,
     AdOperationFailedEvent,
     AdsListedEvent,
     AdUpdatedEvent,
     AvailableAdItem,
     CreateAdCommand,
     DeleteAdCommand,
+    GetAdByIdCommand,
     ListAdsByOwnerCommand,
     ListAvailableAdsCommand,
     SearchAdsCommand,
@@ -29,6 +32,8 @@ TOPIC_DELETED = "ads.deleted"
 TOPIC_OPERATION_FAILED = "ads.operation_failed"
 TOPIC_AVAILABLE_LIST = "ads.available_list"
 TOPIC_SEARCH_RESULT = "ads.search_result"
+TOPIC_FOUND = "ads.found"
+TOPIC_NOT_FOUND = "ads.not_found"
 
 
 def _create_ad(command: CreateAdCommand) -> Ad:
@@ -210,3 +215,31 @@ async def handle_search(payload: dict, correlation_id: str | None) -> None:
         for ad in ads
     ]
     await producer.publish(TOPIC_SEARCH_RESULT, items, correlation_id)
+
+
+def _get_ad(ad_id: str) -> Ad | None:
+    session = SessionLocal()
+    try:
+        return AdRepository(session).get_by_id(ad_id)
+    finally:
+        session.close()
+
+
+async def handle_get_by_id(payload: dict, correlation_id: str | None) -> None:
+    """Internal lookup used by other services (e.g. Trades) to resolve an ad by id."""
+    try:
+        command = GetAdByIdCommand.model_validate(payload)
+    except ValidationError:
+        return
+
+    ad = await asyncio.to_thread(_get_ad, command.ad_id)
+
+    if ad is None:
+        event = AdNotFoundEvent(ad_id=command.ad_id)
+        await producer.publish(TOPIC_NOT_FOUND, event.model_dump(), correlation_id)
+        return
+
+    event = AdFoundEvent(
+        id=str(ad.id), owner_id=str(ad.owner_id), title=ad.title, description=ad.description
+    )
+    await producer.publish(TOPIC_FOUND, event.model_dump(), correlation_id)

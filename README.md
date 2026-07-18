@@ -97,3 +97,11 @@ O BFF expõe a consulta de anúncios disponíveis (de outros usuários), encamin
 - `GET /ads/search?q=notebook` — mesmo endpoint, filtrando por título de forma parcial e case insensitive.
 
 Reutiliza a tabela `ads` da Feature 003 (nenhuma tabela nova); a exclusão dos anúncios do próprio usuário e o filtro por título são resolvidos no serviço Ads.
+
+## Feature 005 (Trade Request)
+
+O BFF expõe a criação de solicitações de troca entre anúncios, encaminhando o comando ao serviço Trades via Kafka:
+
+- `POST /trades` — requer `Authorization: Bearer <token>` e `{"requester_ad_id", "target_ad_id"}` → `201` com `{"id", "status": "PENDING"}`, ou falha (`404` se algum anúncio não existir, `400` se o anúncio de destino pertencer ao próprio solicitante).
+
+O serviço Trades possui banco próprio (`trades_db`) e é responsável por toda a regra de negócio da solicitação. Como cada microsserviço tem seu próprio banco, o Trades não acessa a tabela `ads` diretamente: ele consulta o serviço Ads via Kafka (comando interno `ads.get_by_id`, respondido com `ads.found`/`ads.not_found`) para validar que os anúncios existem e que o anúncio de destino não pertence ao solicitante. Esta feature apenas cria a solicitação com status `PENDING` — aceite, recusa, cancelamento e notificações pertencem a features futuras.

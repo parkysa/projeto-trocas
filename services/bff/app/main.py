@@ -7,11 +7,13 @@ from app.schemas import (
     AdResponse,
     AdSearchResult,
     CreateAdRequest,
+    CreateTradeRequest,
     LoginRequest,
     LoginResponse,
     ProfileResponse,
     RegisterRequest,
     RegisterResponse,
+    TradeResponse,
     UpdateAdRequest,
     UpdateProfileRequest,
 )
@@ -27,10 +29,15 @@ TOPIC_ADS_UPDATE = "ads.update"
 TOPIC_ADS_DELETE = "ads.delete"
 TOPIC_ADS_LIST_AVAILABLE = "ads.list_available"
 TOPIC_ADS_SEARCH = "ads.search"
+TOPIC_TRADES_REQUEST = "trades.request"
 
 
 def _ad_operation_status_code(reason: str) -> int:
     return 404 if reason == "ad_not_found" else 403
+
+
+def _trade_request_failed_status_code(reason: str) -> int:
+    return 404 if reason in ("requester_ad_not_found", "target_ad_not_found") else 400
 
 
 @asynccontextmanager
@@ -182,3 +189,26 @@ async def search_ads(q: str | None = None, user_id: str = Depends(get_current_us
         raise HTTPException(status_code=504, detail="Timed out waiting for Ads service")
 
     return [AdSearchResult(**ad) for ad in payload]
+
+
+@app.post("/trades", response_model=TradeResponse, status_code=201)
+async def create_trade(request: CreateTradeRequest, user_id: str = Depends(get_current_user_id)):
+    try:
+        topic, payload = await client.request(
+            TOPIC_TRADES_REQUEST,
+            {
+                "requester_id": user_id,
+                "requester_ad_id": request.requester_ad_id,
+                "target_ad_id": request.target_ad_id,
+            },
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Timed out waiting for Trades service")
+
+    if topic == "trades.request_failed":
+        raise HTTPException(
+            status_code=_trade_request_failed_status_code(payload["reason"]),
+            detail=payload["reason"],
+        )
+
+    return TradeResponse(id=payload["trade_id"], status=payload["status"])

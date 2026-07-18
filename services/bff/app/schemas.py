@@ -55,3 +55,13 @@ class AdSearchResult(BaseModel):
     title: str
     description: str
     owner_id: str
+
+
+class CreateTradeRequest(BaseModel):
+    requester_ad_id: str
+    target_ad_id: str
+
+
+class TradeResponse(BaseModel):
+    id: str
+    status: str

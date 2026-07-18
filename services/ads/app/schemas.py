@@ -67,3 +67,18 @@ class AvailableAdItem(BaseModel):
     title: str
     description: str
     owner_id: str
+
+
+class GetAdByIdCommand(BaseModel):
+    ad_id: str
+
+
+class AdFoundEvent(BaseModel):
+    id: str
+    owner_id: str
+    title: str
+    description: str
+
+
+class AdNotFoundEvent(BaseModel):
+    ad_id: str
