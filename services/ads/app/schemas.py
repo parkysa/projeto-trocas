@@ -51,3 +51,19 @@ class AdDeletedEvent(BaseModel):
 
 class AdOperationFailedEvent(BaseModel):
     reason: str
+
+
+class ListAvailableAdsCommand(BaseModel):
+    owner_id: str
+
+
+class SearchAdsCommand(BaseModel):
+    owner_id: str
+    query: str
+
+
+class AvailableAdItem(BaseModel):
+    id: str
+    title: str
+    description: str
+    owner_id: str

@@ -88,3 +88,12 @@ O BFF expõe o gerenciamento de anúncios do usuário autenticado, encaminhando 
 - `DELETE /ads/{id}` — requer `Authorization: Bearer <token>` → `204`, `404` se o anúncio não existir, ou `403` se pertencer a outro usuário.
 
 O BFF identifica o usuário a partir do JWT (mesmo mecanismo da Feature 002) e encaminha o `owner_id` ao serviço Ads; toda regra de negócio (posse do anúncio, persistência) permanece no serviço Ads, que possui banco próprio (`ads_db`).
+
+## Feature 004 (Ad Search)
+
+O BFF expõe a consulta de anúncios disponíveis (de outros usuários), encaminhando os comandos ao serviço Ads via Kafka:
+
+- `GET /ads/search` — requer `Authorization: Bearer <token>` → `200` com todos os anúncios disponíveis, exceto os do próprio usuário.
+- `GET /ads/search?q=notebook` — mesmo endpoint, filtrando por título de forma parcial e case insensitive.
+
+Reutiliza a tabela `ads` da Feature 003 (nenhuma tabela nova); a exclusão dos anúncios do próprio usuário e o filtro por título são resolvidos no serviço Ads.

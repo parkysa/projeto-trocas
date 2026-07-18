@@ -48,3 +48,10 @@ class AdResponse(BaseModel):
     id: str
     title: str
     description: str
+
+
+class AdSearchResult(BaseModel):
+    id: str
+    title: str
+    description: str
+    owner_id: str

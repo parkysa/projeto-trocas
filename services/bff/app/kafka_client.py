@@ -20,6 +20,8 @@ REPLY_TOPICS = (
     "ads.updated",
     "ads.deleted",
     "ads.operation_failed",
+    "ads.available_list",
+    "ads.search_result",
 )
 
 
@@ -70,7 +72,9 @@ class KafkaRequestReplyClient:
                     "Failed to process reply from topic %s", message.topic
                 )
 
-    async def request(self, command_topic: str, payload: dict) -> tuple[str, dict]:
+    async def request(
+        self, command_topic: str, payload: dict
+    ) -> tuple[str, dict | list]:
         correlation_id = str(uuid.uuid4())
         future: asyncio.Future = asyncio.get_event_loop().create_future()
         self._pending[correlation_id] = future

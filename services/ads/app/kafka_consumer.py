@@ -6,7 +6,9 @@ from aiokafka import AIOKafkaConsumer
 from app.commands import (
     handle_create,
     handle_delete,
+    handle_list_available,
     handle_list_by_owner,
+    handle_search,
     handle_update,
 )
 from app.config import settings
@@ -15,12 +17,16 @@ TOPIC_CREATE = "ads.create"
 TOPIC_LIST_BY_OWNER = "ads.list_by_owner"
 TOPIC_UPDATE = "ads.update"
 TOPIC_DELETE = "ads.delete"
+TOPIC_LIST_AVAILABLE = "ads.list_available"
+TOPIC_SEARCH = "ads.search"
 
 _HANDLERS = {
     TOPIC_CREATE: handle_create,
     TOPIC_LIST_BY_OWNER: handle_list_by_owner,
     TOPIC_UPDATE: handle_update,
     TOPIC_DELETE: handle_delete,
+    TOPIC_LIST_AVAILABLE: handle_list_available,
+    TOPIC_SEARCH: handle_search,
 }
 
 
@@ -34,6 +40,8 @@ class KafkaCommandConsumer:
             TOPIC_LIST_BY_OWNER,
             TOPIC_UPDATE,
             TOPIC_DELETE,
+            TOPIC_LIST_AVAILABLE,
+            TOPIC_SEARCH,
             bootstrap_servers=settings.kafka_bootstrap_servers,
             group_id="ads-service",
         )

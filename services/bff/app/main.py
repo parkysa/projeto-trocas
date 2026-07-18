@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI, HTTPException, Response
 from app.kafka_client import client
 from app.schemas import (
     AdResponse,
+    AdSearchResult,
     CreateAdRequest,
     LoginRequest,
     LoginResponse,
@@ -24,6 +25,8 @@ TOPIC_ADS_CREATE = "ads.create"
 TOPIC_ADS_LIST_BY_OWNER = "ads.list_by_owner"
 TOPIC_ADS_UPDATE = "ads.update"
 TOPIC_ADS_DELETE = "ads.delete"
+TOPIC_ADS_LIST_AVAILABLE = "ads.list_available"
+TOPIC_ADS_SEARCH = "ads.search"
 
 
 def _ad_operation_status_code(reason: str) -> int:
@@ -162,3 +165,20 @@ async def delete_ad(ad_id: str, user_id: str = Depends(get_current_user_id)):
         )
 
     return Response(status_code=204)
+
+
+@app.get("/ads/search", response_model=list[AdSearchResult])
+async def search_ads(q: str | None = None, user_id: str = Depends(get_current_user_id)):
+    try:
+        if q:
+            topic, payload = await client.request(
+                TOPIC_ADS_SEARCH, {"owner_id": user_id, "query": q}
+            )
+        else:
+            topic, payload = await client.request(
+                TOPIC_ADS_LIST_AVAILABLE, {"owner_id": user_id}
+            )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Timed out waiting for Ads service")
+
+    return [AdSearchResult(**ad) for ad in payload]

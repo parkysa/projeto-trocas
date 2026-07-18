@@ -13,9 +13,12 @@ from app.schemas import (
     AdOperationFailedEvent,
     AdsListedEvent,
     AdUpdatedEvent,
+    AvailableAdItem,
     CreateAdCommand,
     DeleteAdCommand,
     ListAdsByOwnerCommand,
+    ListAvailableAdsCommand,
+    SearchAdsCommand,
     UpdateAdCommand,
 )
 
@@ -24,6 +27,8 @@ TOPIC_LISTED = "ads.listed"
 TOPIC_UPDATED = "ads.updated"
 TOPIC_DELETED = "ads.deleted"
 TOPIC_OPERATION_FAILED = "ads.operation_failed"
+TOPIC_AVAILABLE_LIST = "ads.available_list"
+TOPIC_SEARCH_RESULT = "ads.search_result"
 
 
 def _create_ad(command: CreateAdCommand) -> Ad:
@@ -147,3 +152,61 @@ async def handle_delete(payload: dict, correlation_id: str | None) -> None:
 
     event = AdDeletedEvent(id=result)
     await producer.publish(TOPIC_DELETED, event.model_dump(), correlation_id)
+
+
+def _list_available(exclude_owner_id: str) -> list[Ad]:
+    session = SessionLocal()
+    try:
+        return AdRepository(session).list_available(exclude_owner_id=exclude_owner_id)
+    finally:
+        session.close()
+
+
+def _search_ads(command: SearchAdsCommand) -> list[Ad]:
+    session = SessionLocal()
+    try:
+        return AdRepository(session).search_by_title(
+            query=command.query, exclude_owner_id=command.owner_id
+        )
+    finally:
+        session.close()
+
+
+async def handle_list_available(payload: dict, correlation_id: str | None) -> None:
+    try:
+        command = ListAvailableAdsCommand.model_validate(payload)
+    except ValidationError:
+        return
+
+    ads = await asyncio.to_thread(_list_available, command.owner_id)
+
+    items = [
+        AvailableAdItem(
+            id=str(ad.id),
+            title=ad.title,
+            description=ad.description,
+            owner_id=str(ad.owner_id),
+        ).model_dump()
+        for ad in ads
+    ]
+    await producer.publish(TOPIC_AVAILABLE_LIST, items, correlation_id)
+
+
+async def handle_search(payload: dict, correlation_id: str | None) -> None:
+    try:
+        command = SearchAdsCommand.model_validate(payload)
+    except ValidationError:
+        return
+
+    ads = await asyncio.to_thread(_search_ads, command)
+
+    items = [
+        AvailableAdItem(
+            id=str(ad.id),
+            title=ad.title,
+            description=ad.description,
+            owner_id=str(ad.owner_id),
+        ).model_dump()
+        for ad in ads
+    ]
+    await producer.publish(TOPIC_SEARCH_RESULT, items, correlation_id)

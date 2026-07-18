@@ -25,6 +25,22 @@ class AdRepository:
     def get_by_id(self, ad_id: str) -> Ad | None:
         return self.session.get(Ad, uuid.UUID(ad_id))
 
+    def list_available(self, exclude_owner_id: str) -> list[Ad]:
+        return list(
+            self.session.scalars(
+                select(Ad).where(Ad.owner_id != uuid.UUID(exclude_owner_id))
+            )
+        )
+
+    def search_by_title(self, query: str, exclude_owner_id: str) -> list[Ad]:
+        return list(
+            self.session.scalars(
+                select(Ad)
+                .where(Ad.owner_id != uuid.UUID(exclude_owner_id))
+                .where(Ad.title.ilike(f"%{query}%"))
+            )
+        )
+
     def update(self, ad: Ad, title: str, description: str) -> Ad:
         ad.title = title
         ad.description = description

@@ -20,7 +20,7 @@ class KafkaProducer:
             await self._producer.stop()
 
     async def publish(
-        self, topic: str, payload: dict, correlation_id: str | None
+        self, topic: str, payload: dict | list, correlation_id: str | None
     ) -> None:
         headers = []
         if correlation_id is not None:
