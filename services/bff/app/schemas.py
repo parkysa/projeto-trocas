@@ -21,3 +21,14 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str
+
+
+class ProfileResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str
+    email: EmailStr

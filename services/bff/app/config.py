@@ -10,5 +10,8 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str
     bff_kafka_reply_timeout_seconds: int
 
+    jwt_secret_key: str
+    jwt_algorithm: str
+
 
 settings = Settings()

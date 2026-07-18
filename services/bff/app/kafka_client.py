@@ -12,6 +12,9 @@ REPLY_TOPICS = (
     "users.registration_failed",
     "users.authenticated",
     "users.authentication_failed",
+    "users.profile_found",
+    "users.profile_updated",
+    "users.profile_update_failed",
 )
 
 

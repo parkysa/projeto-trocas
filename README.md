@@ -68,3 +68,12 @@ O BFF expõe cadastro e login, encaminhando os comandos ao serviço Users via Ka
 - `POST /login` — `{"email", "password"}` → `200` com `{"access_token", "token_type"}`, ou `401` se as credenciais forem inválidas.
 
 O serviço Users é o único responsável por cadastro, login, hash de senha (bcrypt) e geração/validação de JWT (HS256). A senha nunca é armazenada em texto puro.
+
+## Feature 002 (Users)
+
+O BFF expõe a consulta e atualização do perfil do usuário autenticado, encaminhando os comandos ao serviço Users via Kafka:
+
+- `GET /me` — requer `Authorization: Bearer <token>` → `200` com `{"id", "name", "email"}`.
+- `PUT /me` — requer `Authorization: Bearer <token>` e `{"name", "email"}` → `200` com o perfil atualizado, ou `409` se o email já estiver em uso por outro usuário.
+
+O BFF valida o JWT para identificar o usuário autenticado antes de encaminhar o comando; toda regra de negócio do perfil (unicidade de email, persistência) permanece no serviço Users.

@@ -3,15 +3,24 @@ import logging
 
 from aiokafka import AIOKafkaConsumer
 
-from app.commands import handle_login, handle_register
+from app.commands import (
+    handle_get_profile,
+    handle_login,
+    handle_register,
+    handle_update_profile,
+)
 from app.config import settings
 
 TOPIC_REGISTER = "users.register"
 TOPIC_LOGIN = "users.login"
+TOPIC_GET_PROFILE = "users.get_profile"
+TOPIC_UPDATE_PROFILE = "users.update_profile"
 
 _HANDLERS = {
     TOPIC_REGISTER: handle_register,
     TOPIC_LOGIN: handle_login,
+    TOPIC_GET_PROFILE: handle_get_profile,
+    TOPIC_UPDATE_PROFILE: handle_update_profile,
 }
 
 
@@ -23,6 +32,8 @@ class KafkaCommandConsumer:
         self._consumer = AIOKafkaConsumer(
             TOPIC_REGISTER,
             TOPIC_LOGIN,
+            TOPIC_GET_PROFILE,
+            TOPIC_UPDATE_PROFILE,
             bootstrap_servers=settings.kafka_bootstrap_servers,
             group_id="users-service",
         )
