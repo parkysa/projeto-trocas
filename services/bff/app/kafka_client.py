@@ -25,6 +25,11 @@ REPLY_TOPICS = (
     "ads.anuncio.operacao_falhou",
     "ads.anuncio.disponiveis_listados",
     "ads.anuncio.busca_concluida",
+    "ads.anuncio.encontrado",
+    "ads.anuncio.nao_encontrado",
+    "ads.anuncio.favoritado",
+    "ads.anuncio.desfavoritado",
+    "ads.anuncio.favoritos_listados",
     "trades.troca.solicitada",
     "trades.troca.solicitacao_falhou",
     "trades.troca.aprovada",
@@ -32,6 +37,8 @@ REPLY_TOPICS = (
     "trades.troca.decisao_falhou",
     "trades.troca.cancelada",
     "trades.troca.cancelamento_falhou",
+    "trades.troca.de_mim_listadas",
+    "trades.troca.para_mim_listadas",
     "notifications.notificacao.listada",
 )
 

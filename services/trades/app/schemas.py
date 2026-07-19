@@ -56,3 +56,24 @@ class TradeCancelledEvent(BaseModel):
 
 class TradeCancelFailedEvent(BaseModel):
     reason: str
+
+
+class ListTradesByRequesterCommand(BaseModel):
+    requester_id: str
+
+
+class ListTradesForTargetOwnerCommand(BaseModel):
+    owner_id: str
+
+
+class TradeListItem(BaseModel):
+    id: str
+    requester_id: str
+    requester_ad_id: str
+    target_ad_id: str
+    status: str
+    created_at: str
+
+
+class TradesListedEvent(BaseModel):
+    trades: list[TradeListItem]

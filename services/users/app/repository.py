@@ -10,8 +10,8 @@ class UserRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create(self, name: str, email: str, password_hash: str) -> User:
-        user = User(name=name, email=email, password_hash=password_hash)
+    async def create(self, name: str, email: str, phone: str, password_hash: str) -> User:
+        user = User(name=name, email=email, phone=phone, password_hash=password_hash)
         self.session.add(user)
         await self.session.commit()
         await self.session.refresh(user)
@@ -23,9 +23,10 @@ class UserRepository:
     async def get_by_id(self, user_id: str) -> User | None:
         return await self.session.get(User, uuid.UUID(user_id))
 
-    async def update(self, user: User, name: str, email: str) -> User:
+    async def update(self, user: User, name: str, email: str, phone: str) -> User:
         user.name = name
         user.email = email
+        user.phone = phone
         await self.session.commit()
         await self.session.refresh(user)
         return user

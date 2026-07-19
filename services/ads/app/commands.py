@@ -7,6 +7,9 @@ from app.repository import AdRepository
 from app.schemas import (
     AdCreatedEvent,
     AdDeletedEvent,
+    FavoriteAdCommand,
+    FavoriteAdEvent,
+    FavoriteAdsListedEvent,
     AdFoundEvent,
     AdItem,
     AdNotFoundEvent,
@@ -17,6 +20,7 @@ from app.schemas import (
     CreateAdCommand,
     DeleteAdCommand,
     GetAdByIdCommand,
+    ListFavoriteAdsCommand,
     ListAdsByOwnerCommand,
     ListAvailableAdsCommand,
     MarkAdUnavailableCommand,
@@ -33,6 +37,9 @@ TOPIC_AVAILABLE_LIST = "ads.anuncio.disponiveis_listados"
 TOPIC_SEARCH_RESULT = "ads.anuncio.busca_concluida"
 TOPIC_FOUND = "ads.anuncio.encontrado"
 TOPIC_NOT_FOUND = "ads.anuncio.nao_encontrado"
+TOPIC_FAVORITED = "ads.anuncio.favoritado"
+TOPIC_UNFAVORITED = "ads.anuncio.desfavoritado"
+TOPIC_FAVORITES_LISTED = "ads.anuncio.favoritos_listados"
 
 
 async def _create_ad(command: CreateAdCommand) -> Ad:
@@ -41,6 +48,12 @@ async def _create_ad(command: CreateAdCommand) -> Ad:
             owner_id=command.owner_id,
             title=command.title,
             description=command.description,
+            image=command.image,
+            image_position=command.image_position,
+            category=command.category,
+            condition=command.condition,
+            location=command.location,
+            trade_terms=command.trade_terms,
         )
 
 
@@ -58,8 +71,18 @@ async def _update_ad(command: UpdateAdCommand) -> tuple[bool, Ad | str]:
             return False, "ad_not_found"
         if str(ad.owner_id) != command.owner_id:
             return False, "forbidden"
+        if not ad.is_available:
+            return False, "ad_unavailable"
         return True, await repository.update(
-            ad, title=command.title, description=command.description
+            ad,
+            title=command.title,
+            description=command.description,
+            image=command.image,
+            image_position=command.image_position,
+            category=command.category,
+            condition=command.condition,
+            location=command.location,
+            trade_terms=command.trade_terms,
         )
 
 
@@ -72,6 +95,13 @@ async def _delete_ad(command: DeleteAdCommand) -> tuple[bool, str]:
             return False, "ad_not_found"
         if str(ad.owner_id) != command.owner_id:
             return False, "forbidden"
+
+        if command.keep_record:
+            await repository.mark_unavailable(command.ad_id)
+            return True, str(ad.id)
+
+        if not ad.is_available:
+            return False, "ad_unavailable"
         ad_id = str(ad.id)
         await repository.delete(ad)
         return True, ad_id
@@ -85,7 +115,18 @@ async def handle_create(payload: dict, correlation_id: str | None) -> None:
 
     ad = await _create_ad(command)
 
-    event = AdCreatedEvent(id=str(ad.id), title=ad.title, description=ad.description)
+    event = AdCreatedEvent(
+        id=str(ad.id),
+        title=ad.title,
+        description=ad.description,
+        is_available=ad.is_available,
+        image=ad.image,
+        image_position=ad.image_position,
+        category=ad.category,
+        condition=ad.condition,
+        location=ad.location,
+        trade_terms=ad.trade_terms,
+    )
     await producer.publish(TOPIC_CREATED, event.model_dump(), correlation_id)
 
 
@@ -99,7 +140,18 @@ async def handle_list_by_owner(payload: dict, correlation_id: str | None) -> Non
 
     event = AdsListedEvent(
         ads=[
-            AdItem(id=str(ad.id), title=ad.title, description=ad.description)
+            AdItem(
+                id=str(ad.id),
+                title=ad.title,
+                description=ad.description,
+                is_available=ad.is_available,
+                image=ad.image,
+                image_position=ad.image_position,
+                category=ad.category,
+                condition=ad.condition,
+                location=ad.location,
+                trade_terms=ad.trade_terms,
+            )
             for ad in ads
         ]
     )
@@ -122,7 +174,16 @@ async def handle_update(payload: dict, correlation_id: str | None) -> None:
         return
 
     event = AdUpdatedEvent(
-        id=str(result.id), title=result.title, description=result.description
+        id=str(result.id),
+        title=result.title,
+        description=result.description,
+        is_available=result.is_available,
+        image=result.image,
+        image_position=result.image_position,
+        category=result.category,
+        condition=result.condition,
+        location=result.location,
+        trade_terms=result.trade_terms,
     )
     await producer.publish(TOPIC_UPDATED, event.model_dump(), correlation_id)
 
@@ -174,6 +235,12 @@ async def handle_list_available(payload: dict, correlation_id: str | None) -> No
             title=ad.title,
             description=ad.description,
             owner_id=str(ad.owner_id),
+            image=ad.image,
+            image_position=ad.image_position,
+            category=ad.category,
+            condition=ad.condition,
+            location=ad.location,
+            trade_terms=ad.trade_terms,
         ).model_dump()
         for ad in ads
     ]
@@ -194,6 +261,12 @@ async def handle_search(payload: dict, correlation_id: str | None) -> None:
             title=ad.title,
             description=ad.description,
             owner_id=str(ad.owner_id),
+            image=ad.image,
+            image_position=ad.image_position,
+            category=ad.category,
+            condition=ad.condition,
+            location=ad.location,
+            trade_terms=ad.trade_terms,
         ).model_dump()
         for ad in ads
     ]
@@ -220,7 +293,17 @@ async def handle_get_by_id(payload: dict, correlation_id: str | None) -> None:
         return
 
     event = AdFoundEvent(
-        id=str(ad.id), owner_id=str(ad.owner_id), title=ad.title, description=ad.description
+        id=str(ad.id),
+        owner_id=str(ad.owner_id),
+        title=ad.title,
+        description=ad.description,
+        is_available=ad.is_available,
+        image=ad.image,
+        image_position=ad.image_position,
+        category=ad.category,
+        condition=ad.condition,
+        location=ad.location,
+        trade_terms=ad.trade_terms,
     )
     await producer.publish(TOPIC_FOUND, event.model_dump(), correlation_id)
 
@@ -238,3 +321,59 @@ async def handle_mark_unavailable(payload: dict, correlation_id: str | None) -> 
         return
 
     await _mark_unavailable(command.ad_id)
+
+
+async def handle_favorite(payload: dict, correlation_id: str | None) -> None:
+    try:
+        command = FavoriteAdCommand.model_validate(payload)
+    except ValidationError:
+        return
+
+    async with SessionLocal() as session:
+        repository = AdRepository(session)
+        ad = await repository.get_by_id(command.ad_id)
+        if ad is None:
+            event = AdOperationFailedEvent(reason="ad_not_found")
+            await producer.publish(TOPIC_OPERATION_FAILED, event.model_dump(), correlation_id)
+            return
+
+        if not ad.is_available:
+            event = AdOperationFailedEvent(reason="ad_unavailable")
+            await producer.publish(TOPIC_OPERATION_FAILED, event.model_dump(), correlation_id)
+            return
+
+        if str(ad.owner_id) == command.user_id:
+            event = AdOperationFailedEvent(reason="cannot_favorite_own_ad")
+            await producer.publish(TOPIC_OPERATION_FAILED, event.model_dump(), correlation_id)
+            return
+
+        await repository.favorite(command.user_id, command.ad_id)
+
+    event = FavoriteAdEvent(ad_id=command.ad_id)
+    await producer.publish(TOPIC_FAVORITED, event.model_dump(), correlation_id)
+
+
+async def handle_unfavorite(payload: dict, correlation_id: str | None) -> None:
+    try:
+        command = FavoriteAdCommand.model_validate(payload)
+    except ValidationError:
+        return
+
+    async with SessionLocal() as session:
+        await AdRepository(session).unfavorite(command.user_id, command.ad_id)
+
+    event = FavoriteAdEvent(ad_id=command.ad_id)
+    await producer.publish(TOPIC_UNFAVORITED, event.model_dump(), correlation_id)
+
+
+async def handle_list_favorites(payload: dict, correlation_id: str | None) -> None:
+    try:
+        command = ListFavoriteAdsCommand.model_validate(payload)
+    except ValidationError:
+        return
+
+    async with SessionLocal() as session:
+        ad_ids = await AdRepository(session).list_favorite_ids(command.user_id)
+
+    event = FavoriteAdsListedEvent(ad_ids=ad_ids)
+    await producer.publish(TOPIC_FAVORITES_LISTED, event.model_dump(), correlation_id)

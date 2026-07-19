@@ -7,11 +7,14 @@ from aiokafka import AIOKafkaConsumer
 from app.commands import (
     handle_create,
     handle_delete,
+    handle_favorite,
     handle_get_by_id,
     handle_list_available,
     handle_list_by_owner,
+    handle_list_favorites,
     handle_mark_unavailable,
     handle_search,
+    handle_unfavorite,
     handle_update,
 )
 from app.config import settings
@@ -25,6 +28,9 @@ TOPIC_LIST_AVAILABLE = "ads.anuncio.consultar_disponiveis"
 TOPIC_SEARCH = "ads.anuncio.buscar"
 TOPIC_GET_BY_ID = "ads.anuncio.consultar_por_id"
 TOPIC_MARK_UNAVAILABLE = "ads.anuncio.marcar_indisponivel"
+TOPIC_FAVORITE = "ads.anuncio.favoritar"
+TOPIC_UNFAVORITE = "ads.anuncio.desfavoritar"
+TOPIC_LIST_FAVORITES = "ads.anuncio.consultar_favoritos"
 
 _HANDLERS = {
     TOPIC_CREATE: handle_create,
@@ -35,6 +41,9 @@ _HANDLERS = {
     TOPIC_SEARCH: handle_search,
     TOPIC_GET_BY_ID: handle_get_by_id,
     TOPIC_MARK_UNAVAILABLE: handle_mark_unavailable,
+    TOPIC_FAVORITE: handle_favorite,
+    TOPIC_UNFAVORITE: handle_unfavorite,
+    TOPIC_LIST_FAVORITES: handle_list_favorites,
 }
 
 
@@ -53,6 +62,9 @@ class KafkaCommandConsumer:
             TOPIC_SEARCH,
             TOPIC_GET_BY_ID,
             TOPIC_MARK_UNAVAILABLE,
+            TOPIC_FAVORITE,
+            TOPIC_UNFAVORITE,
+            TOPIC_LIST_FAVORITES,
             bootstrap_servers=settings.kafka_bootstrap_servers,
             group_id="ads-service",
         )

@@ -4,6 +4,7 @@ from pydantic import BaseModel, EmailStr
 class RegisterCommand(BaseModel):
     name: str
     email: EmailStr
+    phone: str
     password: str
 
 
@@ -15,6 +16,7 @@ class LoginCommand(BaseModel):
 class RegisteredEvent(BaseModel):
     user_id: str
     email: str
+    phone: str
 
 
 class RegistrationFailedEvent(BaseModel):
@@ -40,18 +42,21 @@ class UpdateProfileCommand(BaseModel):
     user_id: str
     name: str
     email: EmailStr
+    phone: str
 
 
 class ProfileFoundEvent(BaseModel):
     id: str
     name: str
     email: str
+    phone: str
 
 
 class ProfileUpdatedEvent(BaseModel):
     id: str
     name: str
     email: str
+    phone: str
 
 
 class ProfileUpdateFailedEvent(BaseModel):

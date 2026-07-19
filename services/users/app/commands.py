@@ -37,6 +37,7 @@ async def _register_user(command: RegisterCommand) -> User | None:
         return await repository.create(
             name=command.name,
             email=command.email,
+            phone=command.phone,
             password_hash=hash_password(command.password),
         )
 
@@ -63,7 +64,7 @@ async def handle_register(payload: dict, correlation_id: str | None) -> None:
         )
         return
 
-    event = RegisteredEvent(user_id=str(user.id), email=user.email)
+    event = RegisteredEvent(user_id=str(user.id), email=user.email, phone=user.phone)
     await producer.publish(TOPIC_REGISTERED, event.model_dump(), correlation_id)
 
 
@@ -102,7 +103,9 @@ async def _update_profile(command: UpdateProfileCommand) -> User | None:
         existing = await repository.get_by_email(command.email)
         if existing is not None and existing.id != user.id:
             return None
-        return await repository.update(user, name=command.name, email=command.email)
+        return await repository.update(
+            user, name=command.name, email=command.email, phone=command.phone
+        )
 
 
 async def handle_get_profile(payload: dict, correlation_id: str | None) -> None:
@@ -115,7 +118,9 @@ async def handle_get_profile(payload: dict, correlation_id: str | None) -> None:
     if user is None:
         return
 
-    event = ProfileFoundEvent(id=str(user.id), name=user.name, email=user.email)
+    event = ProfileFoundEvent(
+        id=str(user.id), name=user.name, email=user.email, phone=user.phone
+    )
     await producer.publish(TOPIC_PROFILE_FOUND, event.model_dump(), correlation_id)
 
 
@@ -134,5 +139,7 @@ async def handle_update_profile(payload: dict, correlation_id: str | None) -> No
         )
         return
 
-    event = ProfileUpdatedEvent(id=str(user.id), name=user.name, email=user.email)
+    event = ProfileUpdatedEvent(
+        id=str(user.id), name=user.name, email=user.email, phone=user.phone
+    )
     await producer.publish(TOPIC_PROFILE_UPDATED, event.model_dump(), correlation_id)

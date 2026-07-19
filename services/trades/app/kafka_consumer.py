@@ -4,7 +4,14 @@ import logging
 
 from aiokafka import AIOKafkaConsumer
 
-from app.commands import handle_accept, handle_cancel, handle_reject, handle_request
+from app.commands import (
+    handle_accept,
+    handle_cancel,
+    handle_list_by_requester,
+    handle_list_for_target_owner,
+    handle_reject,
+    handle_request,
+)
 from app.config import settings
 from app.kafka_producer import producer
 
@@ -12,12 +19,16 @@ TOPIC_REQUEST = "trades.troca.solicitar"
 TOPIC_ACCEPT = "trades.troca.aceitar"
 TOPIC_REJECT = "trades.troca.recusar"
 TOPIC_CANCEL = "trades.troca.cancelar"
+TOPIC_LIST_BY_REQUESTER = "trades.troca.consultar_de_mim"
+TOPIC_LIST_FOR_TARGET_OWNER = "trades.troca.consultar_para_mim"
 
 _HANDLERS = {
     TOPIC_REQUEST: handle_request,
     TOPIC_ACCEPT: handle_accept,
     TOPIC_REJECT: handle_reject,
     TOPIC_CANCEL: handle_cancel,
+    TOPIC_LIST_BY_REQUESTER: handle_list_by_requester,
+    TOPIC_LIST_FOR_TARGET_OWNER: handle_list_for_target_owner,
 }
 
 
@@ -32,6 +43,8 @@ class KafkaCommandConsumer:
             TOPIC_ACCEPT,
             TOPIC_REJECT,
             TOPIC_CANCEL,
+            TOPIC_LIST_BY_REQUESTER,
+            TOPIC_LIST_FOR_TARGET_OWNER,
             bootstrap_servers=settings.kafka_bootstrap_servers,
             group_id="trades-service",
         )

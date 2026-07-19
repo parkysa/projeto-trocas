@@ -8,13 +8,17 @@ from app.repository import TradeRepository
 from app.schemas import (
     AcceptTradeCommand,
     CancelTradeCommand,
+    ListTradesByRequesterCommand,
+    ListTradesForTargetOwnerCommand,
     RejectTradeCommand,
     RequestTradeCommand,
     TradeAcceptedEvent,
     TradeCancelFailedEvent,
     TradeCancelledEvent,
     TradeDecisionFailedEvent,
+    TradeListItem,
     TradeRejectedEvent,
+    TradesListedEvent,
     TradeRequestedEvent,
     TradeRequestFailedEvent,
 )
@@ -26,6 +30,8 @@ TOPIC_REJECTED = "trades.troca.recusada"
 TOPIC_DECISION_FAILED = "trades.troca.decisao_falhou"
 TOPIC_CANCELLED = "trades.troca.cancelada"
 TOPIC_CANCEL_FAILED = "trades.troca.cancelamento_falhou"
+TOPIC_LISTED_BY_REQUESTER = "trades.troca.de_mim_listadas"
+TOPIC_LISTED_FOR_TARGET_OWNER = "trades.troca.para_mim_listadas"
 
 
 async def _create_trade(command: RequestTradeCommand) -> Trade:
@@ -35,6 +41,21 @@ async def _create_trade(command: RequestTradeCommand) -> Trade:
             requester_ad_id=command.requester_ad_id,
             target_ad_id=command.target_ad_id,
         )
+
+
+async def _has_accepted_trade_for_any_ad(*ad_ids: str) -> bool:
+    async with SessionLocal() as session:
+        repository = TradeRepository(session)
+        for ad_id in ad_ids:
+            if await repository.has_accepted_trade_for_ad(ad_id):
+                return True
+        return False
+
+
+async def _has_non_cancelled_trade_for_same_items(ad_a: str, ad_b: str) -> bool:
+    async with SessionLocal() as session:
+        repository = TradeRepository(session)
+        return await repository.has_non_cancelled_trade_for_same_items(ad_a, ad_b)
 
 
 async def _publish_failure(reason: str, correlation_id: str | None) -> None:
@@ -52,14 +73,32 @@ async def handle_request(payload: dict, correlation_id: str | None) -> None:
     if requester_ad is None:
         await _publish_failure("requester_ad_not_found", correlation_id)
         return
+    if not requester_ad.get("is_available", True):
+        await _publish_failure("requester_ad_unavailable", correlation_id)
+        return
 
     target_ad = await ads_client.get_ad_by_id(command.target_ad_id)
     if target_ad is None:
         await _publish_failure("target_ad_not_found", correlation_id)
         return
+    if not target_ad.get("is_available", True):
+        await _publish_failure("target_ad_unavailable", correlation_id)
+        return
 
     if target_ad["owner_id"] == command.requester_id:
         await _publish_failure("cannot_request_own_ad", correlation_id)
+        return
+
+    if await _has_accepted_trade_for_any_ad(
+        command.requester_ad_id, command.target_ad_id
+    ):
+        await _publish_failure("ad_already_traded", correlation_id)
+        return
+
+    if await _has_non_cancelled_trade_for_same_items(
+        command.requester_ad_id, command.target_ad_id
+    ):
+        await _publish_failure("duplicate_trade_not_allowed", correlation_id)
         return
 
     trade = await _create_trade(command)
@@ -88,7 +127,14 @@ async def _accept_trade(trade_id: str) -> tuple[bool, Trade | str]:
             str(trade.requester_ad_id)
         ) or await repository.has_accepted_trade_for_ad(str(trade.target_ad_id)):
             return False, "ad_already_traded"
-        return True, await repository.update_status(trade, status="ACCEPTED")
+        trade.status = "ACCEPTED"
+        await repository.cancel_other_pending_for_ads(
+            accepted_trade_id=str(trade.id),
+            ad_ids=[str(trade.requester_ad_id), str(trade.target_ad_id)],
+        )
+        await session.commit()
+        await session.refresh(trade)
+        return True, trade
 
 
 async def _reject_trade(trade_id: str) -> tuple[bool, Trade | str]:
@@ -212,3 +258,62 @@ async def handle_cancel(payload: dict, correlation_id: str | None) -> None:
         trade_id=str(result.id), status=result.status, target_owner_id=target_owner_id
     )
     await producer.publish(TOPIC_CANCELLED, event.model_dump(), correlation_id)
+
+
+async def handle_list_by_requester(payload: dict, correlation_id: str | None) -> None:
+    try:
+        command = ListTradesByRequesterCommand.model_validate(payload)
+    except ValidationError:
+        return
+
+    async with SessionLocal() as session:
+        trades = await TradeRepository(session).list_by_requester(command.requester_id)
+
+    event = TradesListedEvent(
+        trades=[
+            TradeListItem(
+                id=str(trade.id),
+                requester_id=str(trade.requester_id),
+                requester_ad_id=str(trade.requester_ad_id),
+                target_ad_id=str(trade.target_ad_id),
+                status=trade.status,
+                created_at=trade.created_at.date().isoformat(),
+            )
+            for trade in trades
+        ]
+    )
+    await producer.publish(TOPIC_LISTED_BY_REQUESTER, event.model_dump(), correlation_id)
+
+
+async def handle_list_for_target_owner(payload: dict, correlation_id: str | None) -> None:
+    try:
+        command = ListTradesForTargetOwnerCommand.model_validate(payload)
+    except ValidationError:
+        return
+
+    async with SessionLocal() as session:
+        trades = await TradeRepository(session).list_all()
+
+    visible: list[TradeListItem] = []
+    for trade in trades:
+        target_ad = await ads_client.get_ad_by_id(str(trade.target_ad_id))
+        if target_ad is None:
+            continue
+        if str(target_ad.get("owner_id")) != command.owner_id:
+            continue
+
+        visible.append(
+            TradeListItem(
+                id=str(trade.id),
+                requester_id=str(trade.requester_id),
+                requester_ad_id=str(trade.requester_ad_id),
+                target_ad_id=str(trade.target_ad_id),
+                status=trade.status,
+                created_at=trade.created_at.date().isoformat(),
+            )
+        )
+
+    event = TradesListedEvent(trades=visible)
+    await producer.publish(
+        TOPIC_LISTED_FOR_TARGET_OWNER, event.model_dump(), correlation_id
+    )

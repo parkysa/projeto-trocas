@@ -6,6 +6,7 @@ Plataforma de permutas de itens, composta por microsserviços que se comunicam d
 
 - [Docker](https://docs.docker.com/get-docker/) e [Docker Compose](https://docs.docker.com/compose/) (Docker Desktop já inclui ambos).
 - Nenhuma outra dependência local é necessária — Python, PostgreSQL e Kafka rodam inteiramente dentro dos containers.
+- Para o script opcional de seed de dados fake (`scripts/seed_fake_data.py`): Python 3 e pacote `websockets` no ambiente local.
 - Um cliente WebSocket para testar manualmente (ex.: `wscat`, a extensão WebSocket do Insomnia/Postman, ou um script Python com a biblioteca `websockets`) — não há mais endpoints HTTP de negócio para testar via navegador ou `curl`.
 - Portas livres na máquina host: `8000`–`8004` (serviços), `8080` (Kafka UI), `9094` (Kafka). As portas dos bancos (`5432`) não são expostas ao host — inclusive as réplicas, acessíveis apenas via `docker compose exec`.
 
@@ -40,6 +41,14 @@ Endpoints de verificação (`/health`, HTTP simples) de cada serviço:
 | Notifications | http://localhost:8004/health |
 
 Toda a comunicação de negócio (cadastro, login, anúncios, trocas, notificações) acontece via **WebSocket em `ws://localhost:8000/ws`** — os demais serviços não são chamados diretamente pelo cliente.
+
+### Seed de dados fake (opcional)
+
+Com a stack já em execução, rode o script de seed a partir da raiz de `projeto-trocas`:
+
+```bash
+python scripts/seed_fake_data.py
+```
 
 ### Visualizando o Kafka no navegador (Kafka UI)
 
@@ -91,7 +100,8 @@ projeto-trocas/
 │   ├── trades/             # solicitações e decisões de troca
 │   └── notifications/      # registro de notificações
 ├── scripts/
-│   └── postgres/           # scripts de setup de replicação (primário/réplica)
+│   ├── postgres/           # scripts de setup de replicação (primário/réplica)
+│   └── seed_fake_data.py   # seed opcional de usuários/anúncios fake via WebSocket
 ├── docker-compose.yml
 ├── .env.example             # copie para .env antes de rodar
 └── README.md
@@ -135,10 +145,10 @@ O cliente envia `tipo: "Comando"` (altera estado) ou `"Consulta"` (só leitura);
 
 | Ação do cliente (`topico`) | `tipo` | `payload` de entrada | Requer token? |
 |---|---|---|---|
-| `users.usuario.cadastrar` | Comando | `{"name", "email", "password"}` | não |
+| `users.usuario.cadastrar` | Comando | `{"name", "email", "phone", "password"}` | não |
 | `users.usuario.autenticar` | Comando | `{"email", "password"}` | não |
 | `users.perfil.consultar` | Consulta | `{}` | sim |
-| `users.perfil.atualizar` | Comando | `{"name", "email"}` | sim |
+| `users.perfil.atualizar` | Comando | `{"name", "email", "phone"}` | sim |
 | `ads.anuncio.criar` | Comando | `{"title", "description"}` | sim |
 | `ads.anuncio.consultar_proprios` | Consulta | `{}` | sim |
 | `ads.anuncio.atualizar` | Comando | `{"id", "title", "description"}` | sim |
@@ -156,7 +166,7 @@ Falhas (validação, autorização, regra de negócio) chegam como um evento cuj
 Exemplo de sessão (cadastro seguido de consulta de perfil):
 
 ```json
-→ {"tipo": "Comando", "topico": "users.usuario.cadastrar", "payload": {"name": "João", "email": "joao@email.com", "password": "12345678"}}
+→ {"tipo": "Comando", "topico": "users.usuario.cadastrar", "payload": {"name": "João", "email": "joao@email.com", "phone": "(11) 98888-7777", "password": "12345678"}}
 ← {"tipo": "Evento", "topico": "users.usuario.cadastrado", "payload": {"id": "...", "name": "João", "email": "joao@email.com"}}
 
 → {"tipo": "Comando", "topico": "users.usuario.autenticar", "payload": {"email": "joao@email.com", "password": "12345678"}}
