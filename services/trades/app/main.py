@@ -11,7 +11,7 @@ from app.kafka_producer import producer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    create_all()
+    await create_all()
     await producer.start()
     await consumer.start()
     await ads_client.start()

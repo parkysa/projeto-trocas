@@ -8,9 +8,11 @@ from aiokafka import AIOKafkaConsumer
 from app.config import settings
 from app.kafka_producer import producer
 
-TOPIC_GET_BY_ID = "ads.get_by_id"
-TOPIC_MARK_UNAVAILABLE = "ads.mark_unavailable"
-REPLY_TOPICS = ("ads.found", "ads.not_found")
+TOPIC_GET_BY_ID = "ads.anuncio.consultar_por_id"
+TOPIC_MARK_UNAVAILABLE = "ads.anuncio.marcar_indisponivel"
+TOPIC_FOUND = "ads.anuncio.encontrado"
+TOPIC_NOT_FOUND = "ads.anuncio.nao_encontrado"
+REPLY_TOPICS = (TOPIC_FOUND, TOPIC_NOT_FOUND)
 
 
 class AdsClient:
@@ -47,8 +49,8 @@ class AdsClient:
 
                 future = self._pending.get(correlation_id)
                 if future is not None and not future.done():
-                    payload = json.loads(message.value.decode("utf-8"))
-                    future.set_result((message.topic, payload))
+                    envelope = json.loads(message.value.decode("utf-8"))
+                    future.set_result((message.topic, envelope["payload"]))
             except Exception:
                 logging.exception(
                     "Failed to process reply from topic %s", message.topic
@@ -61,20 +63,24 @@ class AdsClient:
         self._pending[correlation_id] = future
 
         try:
-            await producer.publish(TOPIC_GET_BY_ID, {"ad_id": ad_id}, correlation_id)
+            await producer.publish_request(
+                TOPIC_GET_BY_ID, {"ad_id": ad_id}, correlation_id, tipo="Consulta"
+            )
             topic, payload = await asyncio.wait_for(
                 future, timeout=settings.trades_kafka_reply_timeout_seconds
             )
         finally:
             self._pending.pop(correlation_id, None)
 
-        if topic == "ads.not_found":
+        if topic == TOPIC_NOT_FOUND:
             return None
         return payload
 
     async def mark_unavailable(self, ad_id: str) -> None:
         """Fire-and-forget: tells Ads to flag the ad as no longer tradeable."""
-        await producer.publish(TOPIC_MARK_UNAVAILABLE, {"ad_id": ad_id}, None)
+        await producer.publish_request(
+            TOPIC_MARK_UNAVAILABLE, {"ad_id": ad_id}, None, tipo="Comando"
+        )
 
 
 ads_client = AdsClient()

@@ -40,8 +40,17 @@ class CreateAdRequest(BaseModel):
 
 
 class UpdateAdRequest(BaseModel):
+    id: str
     title: str
     description: str
+
+
+class AdIdRequest(BaseModel):
+    id: str
+
+
+class SearchAdsRequest(BaseModel):
+    q: str
 
 
 class AdResponse(BaseModel):

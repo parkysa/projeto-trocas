@@ -1,5 +1,3 @@
-import asyncio
-
 from pydantic import ValidationError
 
 from app.database import SessionLocal
@@ -26,69 +24,57 @@ from app.schemas import (
     UpdateAdCommand,
 )
 
-TOPIC_CREATED = "ads.created"
-TOPIC_LISTED = "ads.listed"
-TOPIC_UPDATED = "ads.updated"
-TOPIC_DELETED = "ads.deleted"
-TOPIC_OPERATION_FAILED = "ads.operation_failed"
-TOPIC_AVAILABLE_LIST = "ads.available_list"
-TOPIC_SEARCH_RESULT = "ads.search_result"
-TOPIC_FOUND = "ads.found"
-TOPIC_NOT_FOUND = "ads.not_found"
+TOPIC_CREATED = "ads.anuncio.criado"
+TOPIC_LISTED = "ads.anuncio.listado"
+TOPIC_UPDATED = "ads.anuncio.atualizado"
+TOPIC_DELETED = "ads.anuncio.removido"
+TOPIC_OPERATION_FAILED = "ads.anuncio.operacao_falhou"
+TOPIC_AVAILABLE_LIST = "ads.anuncio.disponiveis_listados"
+TOPIC_SEARCH_RESULT = "ads.anuncio.busca_concluida"
+TOPIC_FOUND = "ads.anuncio.encontrado"
+TOPIC_NOT_FOUND = "ads.anuncio.nao_encontrado"
 
 
-def _create_ad(command: CreateAdCommand) -> Ad:
-    session = SessionLocal()
-    try:
-        return AdRepository(session).create(
+async def _create_ad(command: CreateAdCommand) -> Ad:
+    async with SessionLocal() as session:
+        return await AdRepository(session).create(
             owner_id=command.owner_id,
             title=command.title,
             description=command.description,
         )
-    finally:
-        session.close()
 
 
-def _list_ads_by_owner(owner_id: str) -> list[Ad]:
-    session = SessionLocal()
-    try:
-        return AdRepository(session).list_by_owner(owner_id)
-    finally:
-        session.close()
+async def _list_ads_by_owner(owner_id: str) -> list[Ad]:
+    async with SessionLocal() as session:
+        return await AdRepository(session).list_by_owner(owner_id)
 
 
-def _update_ad(command: UpdateAdCommand) -> tuple[bool, Ad | str]:
+async def _update_ad(command: UpdateAdCommand) -> tuple[bool, Ad | str]:
     """Returns (True, updated Ad) on success, or (False, failure reason)."""
-    session = SessionLocal()
-    try:
+    async with SessionLocal() as session:
         repository = AdRepository(session)
-        ad = repository.get_by_id(command.ad_id)
+        ad = await repository.get_by_id(command.ad_id)
         if ad is None:
             return False, "ad_not_found"
         if str(ad.owner_id) != command.owner_id:
             return False, "forbidden"
-        return True, repository.update(
+        return True, await repository.update(
             ad, title=command.title, description=command.description
         )
-    finally:
-        session.close()
 
 
-def _delete_ad(command: DeleteAdCommand) -> tuple[bool, str]:
+async def _delete_ad(command: DeleteAdCommand) -> tuple[bool, str]:
     """Returns (True, deleted ad id) on success, or (False, failure reason)."""
-    session = SessionLocal()
-    try:
+    async with SessionLocal() as session:
         repository = AdRepository(session)
-        ad = repository.get_by_id(command.ad_id)
+        ad = await repository.get_by_id(command.ad_id)
         if ad is None:
             return False, "ad_not_found"
         if str(ad.owner_id) != command.owner_id:
             return False, "forbidden"
         ad_id = str(ad.id)
-        repository.delete(ad)
+        await repository.delete(ad)
         return True, ad_id
-    finally:
-        session.close()
 
 
 async def handle_create(payload: dict, correlation_id: str | None) -> None:
@@ -97,7 +83,7 @@ async def handle_create(payload: dict, correlation_id: str | None) -> None:
     except ValidationError:
         return
 
-    ad = await asyncio.to_thread(_create_ad, command)
+    ad = await _create_ad(command)
 
     event = AdCreatedEvent(id=str(ad.id), title=ad.title, description=ad.description)
     await producer.publish(TOPIC_CREATED, event.model_dump(), correlation_id)
@@ -109,7 +95,7 @@ async def handle_list_by_owner(payload: dict, correlation_id: str | None) -> Non
     except ValidationError:
         return
 
-    ads = await asyncio.to_thread(_list_ads_by_owner, command.owner_id)
+    ads = await _list_ads_by_owner(command.owner_id)
 
     event = AdsListedEvent(
         ads=[
@@ -126,7 +112,7 @@ async def handle_update(payload: dict, correlation_id: str | None) -> None:
     except ValidationError:
         return
 
-    success, result = await asyncio.to_thread(_update_ad, command)
+    success, result = await _update_ad(command)
 
     if not success:
         event = AdOperationFailedEvent(reason=result)
@@ -147,7 +133,7 @@ async def handle_delete(payload: dict, correlation_id: str | None) -> None:
     except ValidationError:
         return
 
-    success, result = await asyncio.to_thread(_delete_ad, command)
+    success, result = await _delete_ad(command)
 
     if not success:
         event = AdOperationFailedEvent(reason=result)
@@ -160,22 +146,18 @@ async def handle_delete(payload: dict, correlation_id: str | None) -> None:
     await producer.publish(TOPIC_DELETED, event.model_dump(), correlation_id)
 
 
-def _list_available(exclude_owner_id: str) -> list[Ad]:
-    session = SessionLocal()
-    try:
-        return AdRepository(session).list_available(exclude_owner_id=exclude_owner_id)
-    finally:
-        session.close()
+async def _list_available(exclude_owner_id: str) -> list[Ad]:
+    async with SessionLocal() as session:
+        return await AdRepository(session).list_available(
+            exclude_owner_id=exclude_owner_id
+        )
 
 
-def _search_ads(command: SearchAdsCommand) -> list[Ad]:
-    session = SessionLocal()
-    try:
-        return AdRepository(session).search_by_title(
+async def _search_ads(command: SearchAdsCommand) -> list[Ad]:
+    async with SessionLocal() as session:
+        return await AdRepository(session).search_by_title(
             query=command.query, exclude_owner_id=command.owner_id
         )
-    finally:
-        session.close()
 
 
 async def handle_list_available(payload: dict, correlation_id: str | None) -> None:
@@ -184,7 +166,7 @@ async def handle_list_available(payload: dict, correlation_id: str | None) -> No
     except ValidationError:
         return
 
-    ads = await asyncio.to_thread(_list_available, command.owner_id)
+    ads = await _list_available(command.owner_id)
 
     items = [
         AvailableAdItem(
@@ -204,7 +186,7 @@ async def handle_search(payload: dict, correlation_id: str | None) -> None:
     except ValidationError:
         return
 
-    ads = await asyncio.to_thread(_search_ads, command)
+    ads = await _search_ads(command)
 
     items = [
         AvailableAdItem(
@@ -218,12 +200,9 @@ async def handle_search(payload: dict, correlation_id: str | None) -> None:
     await producer.publish(TOPIC_SEARCH_RESULT, items, correlation_id)
 
 
-def _get_ad(ad_id: str) -> Ad | None:
-    session = SessionLocal()
-    try:
-        return AdRepository(session).get_by_id(ad_id)
-    finally:
-        session.close()
+async def _get_ad(ad_id: str) -> Ad | None:
+    async with SessionLocal() as session:
+        return await AdRepository(session).get_by_id(ad_id)
 
 
 async def handle_get_by_id(payload: dict, correlation_id: str | None) -> None:
@@ -233,7 +212,7 @@ async def handle_get_by_id(payload: dict, correlation_id: str | None) -> None:
     except ValidationError:
         return
 
-    ad = await asyncio.to_thread(_get_ad, command.ad_id)
+    ad = await _get_ad(command.ad_id)
 
     if ad is None:
         event = AdNotFoundEvent(ad_id=command.ad_id)
@@ -246,12 +225,9 @@ async def handle_get_by_id(payload: dict, correlation_id: str | None) -> None:
     await producer.publish(TOPIC_FOUND, event.model_dump(), correlation_id)
 
 
-def _mark_unavailable(ad_id: str) -> None:
-    session = SessionLocal()
-    try:
-        AdRepository(session).mark_unavailable(ad_id)
-    finally:
-        session.close()
+async def _mark_unavailable(ad_id: str) -> None:
+    async with SessionLocal() as session:
+        await AdRepository(session).mark_unavailable(ad_id)
 
 
 async def handle_mark_unavailable(payload: dict, correlation_id: str | None) -> None:
@@ -261,4 +237,4 @@ async def handle_mark_unavailable(payload: dict, correlation_id: str | None) -> 
     except ValidationError:
         return
 
-    await asyncio.to_thread(_mark_unavailable, command.ad_id)
+    await _mark_unavailable(command.ad_id)

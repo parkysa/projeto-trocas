@@ -1,5 +1,3 @@
-import asyncio
-
 from pydantic import ValidationError
 
 from app.database import SessionLocal
@@ -16,15 +14,14 @@ from app.schemas import (
     UserRegisteredEvent,
 )
 
-TOPIC_LISTED = "notifications.listed"
+TOPIC_LISTED = "notifications.notificacao.listada"
 
 
-def _create_notification(user_id: str, type: str, message: str) -> None:
-    session = SessionLocal()
-    try:
-        NotificationRepository(session).create(user_id=user_id, type=type, message=message)
-    finally:
-        session.close()
+async def _create_notification(user_id: str, type: str, message: str) -> None:
+    async with SessionLocal() as session:
+        await NotificationRepository(session).create(
+            user_id=user_id, type=type, message=message
+        )
 
 
 async def handle_user_registered(payload: dict, correlation_id: str | None) -> None:
@@ -33,8 +30,8 @@ async def handle_user_registered(payload: dict, correlation_id: str | None) -> N
     except ValidationError:
         return
 
-    await asyncio.to_thread(
-        _create_notification, event.user_id, "USER_REGISTERED", "Cadastro realizado com sucesso."
+    await _create_notification(
+        event.user_id, "USER_REGISTERED", "Cadastro realizado com sucesso."
     )
 
 
@@ -44,8 +41,7 @@ async def handle_trade_requested(payload: dict, correlation_id: str | None) -> N
     except ValidationError:
         return
 
-    await asyncio.to_thread(
-        _create_notification,
+    await _create_notification(
         event.target_owner_id,
         "TRADE_REQUEST",
         "Você recebeu uma nova solicitação de troca.",
@@ -58,8 +54,7 @@ async def handle_trade_accepted(payload: dict, correlation_id: str | None) -> No
     except ValidationError:
         return
 
-    await asyncio.to_thread(
-        _create_notification,
+    await _create_notification(
         event.requester_id,
         "TRADE_ACCEPTED",
         "Sua solicitação de troca foi aceita.",
@@ -72,8 +67,7 @@ async def handle_trade_rejected(payload: dict, correlation_id: str | None) -> No
     except ValidationError:
         return
 
-    await asyncio.to_thread(
-        _create_notification,
+    await _create_notification(
         event.requester_id,
         "TRADE_REJECTED",
         "Sua solicitação de troca foi recusada.",
@@ -86,20 +80,16 @@ async def handle_trade_cancelled(payload: dict, correlation_id: str | None) -> N
     except ValidationError:
         return
 
-    await asyncio.to_thread(
-        _create_notification,
+    await _create_notification(
         event.target_owner_id,
         "TRADE_CANCELLED",
         "Uma solicitação de troca foi cancelada.",
     )
 
 
-def _list_notifications(user_id: str) -> list[Notification]:
-    session = SessionLocal()
-    try:
-        return NotificationRepository(session).list_by_user(user_id)
-    finally:
-        session.close()
+async def _list_notifications(user_id: str) -> list[Notification]:
+    async with SessionLocal() as session:
+        return await NotificationRepository(session).list_by_user(user_id)
 
 
 async def handle_list(payload: dict, correlation_id: str | None) -> None:
@@ -108,7 +98,7 @@ async def handle_list(payload: dict, correlation_id: str | None) -> None:
     except ValidationError:
         return
 
-    notifications = await asyncio.to_thread(_list_notifications, command.user_id)
+    notifications = await _list_notifications(command.user_id)
 
     items = [
         NotificationItem(

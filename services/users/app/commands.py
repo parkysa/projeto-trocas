@@ -1,5 +1,3 @@
-import asyncio
-
 from pydantic import ValidationError
 
 from app.database import SessionLocal
@@ -21,37 +19,31 @@ from app.schemas import (
 )
 from app.security import create_access_token, hash_password, verify_password
 
-TOPIC_REGISTERED = "users.registered"
-TOPIC_REGISTRATION_FAILED = "users.registration_failed"
-TOPIC_AUTHENTICATED = "users.authenticated"
-TOPIC_AUTHENTICATION_FAILED = "users.authentication_failed"
-TOPIC_PROFILE_FOUND = "users.profile_found"
-TOPIC_PROFILE_UPDATED = "users.profile_updated"
-TOPIC_PROFILE_UPDATE_FAILED = "users.profile_update_failed"
+TOPIC_REGISTERED = "users.usuario.cadastrado"
+TOPIC_REGISTRATION_FAILED = "users.usuario.cadastro_falhou"
+TOPIC_AUTHENTICATED = "users.usuario.autenticado"
+TOPIC_AUTHENTICATION_FAILED = "users.usuario.autenticacao_falhou"
+TOPIC_PROFILE_FOUND = "users.perfil.encontrado"
+TOPIC_PROFILE_UPDATED = "users.perfil.atualizado"
+TOPIC_PROFILE_UPDATE_FAILED = "users.perfil.atualizacao_falhou"
 
 
-def _register_user(command: RegisterCommand) -> User | None:
+async def _register_user(command: RegisterCommand) -> User | None:
     """Returns the created User, or None if the email is already registered."""
-    session = SessionLocal()
-    try:
+    async with SessionLocal() as session:
         repository = UserRepository(session)
-        if repository.get_by_email(command.email) is not None:
+        if await repository.get_by_email(command.email) is not None:
             return None
-        return repository.create(
+        return await repository.create(
             name=command.name,
             email=command.email,
             password_hash=hash_password(command.password),
         )
-    finally:
-        session.close()
 
 
-def _find_user_by_email(email: str) -> User | None:
-    session = SessionLocal()
-    try:
-        return UserRepository(session).get_by_email(email)
-    finally:
-        session.close()
+async def _find_user_by_email(email: str) -> User | None:
+    async with SessionLocal() as session:
+        return await UserRepository(session).get_by_email(email)
 
 
 async def handle_register(payload: dict, correlation_id: str | None) -> None:
@@ -60,7 +52,7 @@ async def handle_register(payload: dict, correlation_id: str | None) -> None:
     except ValidationError:
         return
 
-    user = await asyncio.to_thread(_register_user, command)
+    user = await _register_user(command)
 
     if user is None:
         event = RegistrationFailedEvent(
@@ -81,7 +73,7 @@ async def handle_login(payload: dict, correlation_id: str | None) -> None:
     except ValidationError:
         return
 
-    user = await asyncio.to_thread(_find_user_by_email, command.email)
+    user = await _find_user_by_email(command.email)
 
     if user is None or not verify_password(command.password, user.password_hash):
         event = AuthenticationFailedEvent(
@@ -97,26 +89,20 @@ async def handle_login(payload: dict, correlation_id: str | None) -> None:
     await producer.publish(TOPIC_AUTHENTICATED, event.model_dump(), correlation_id)
 
 
-def _get_profile(user_id: str) -> User | None:
-    session = SessionLocal()
-    try:
-        return UserRepository(session).get_by_id(user_id)
-    finally:
-        session.close()
+async def _get_profile(user_id: str) -> User | None:
+    async with SessionLocal() as session:
+        return await UserRepository(session).get_by_id(user_id)
 
 
-def _update_profile(command: UpdateProfileCommand) -> User | None:
+async def _update_profile(command: UpdateProfileCommand) -> User | None:
     """Returns the updated User, or None if the email is already used by another user."""
-    session = SessionLocal()
-    try:
+    async with SessionLocal() as session:
         repository = UserRepository(session)
-        user = repository.get_by_id(command.user_id)
-        existing = repository.get_by_email(command.email)
+        user = await repository.get_by_id(command.user_id)
+        existing = await repository.get_by_email(command.email)
         if existing is not None and existing.id != user.id:
             return None
-        return repository.update(user, name=command.name, email=command.email)
-    finally:
-        session.close()
+        return await repository.update(user, name=command.name, email=command.email)
 
 
 async def handle_get_profile(payload: dict, correlation_id: str | None) -> None:
@@ -125,7 +111,7 @@ async def handle_get_profile(payload: dict, correlation_id: str | None) -> None:
     except ValidationError:
         return
 
-    user = await asyncio.to_thread(_get_profile, command.user_id)
+    user = await _get_profile(command.user_id)
     if user is None:
         return
 
@@ -139,7 +125,7 @@ async def handle_update_profile(payload: dict, correlation_id: str | None) -> No
     except ValidationError:
         return
 
-    user = await asyncio.to_thread(_update_profile, command)
+    user = await _update_profile(command)
 
     if user is None:
         event = ProfileUpdateFailedEvent(reason="email_already_registered")

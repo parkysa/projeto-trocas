@@ -17,14 +17,14 @@ from app.commands import (
 from app.config import settings
 from app.kafka_producer import producer
 
-TOPIC_CREATE = "ads.create"
-TOPIC_LIST_BY_OWNER = "ads.list_by_owner"
-TOPIC_UPDATE = "ads.update"
-TOPIC_DELETE = "ads.delete"
-TOPIC_LIST_AVAILABLE = "ads.list_available"
-TOPIC_SEARCH = "ads.search"
-TOPIC_GET_BY_ID = "ads.get_by_id"
-TOPIC_MARK_UNAVAILABLE = "ads.mark_unavailable"
+TOPIC_CREATE = "ads.anuncio.criar"
+TOPIC_LIST_BY_OWNER = "ads.anuncio.consultar_proprios"
+TOPIC_UPDATE = "ads.anuncio.atualizar"
+TOPIC_DELETE = "ads.anuncio.remover"
+TOPIC_LIST_AVAILABLE = "ads.anuncio.consultar_disponiveis"
+TOPIC_SEARCH = "ads.anuncio.buscar"
+TOPIC_GET_BY_ID = "ads.anuncio.consultar_por_id"
+TOPIC_MARK_UNAVAILABLE = "ads.anuncio.marcar_indisponivel"
 
 _HANDLERS = {
     TOPIC_CREATE: handle_create,
@@ -110,7 +110,8 @@ class KafkaCommandConsumer:
                     correlation_id = value.decode("utf-8")
                     break
 
-            payload = json.loads(message.value.decode("utf-8"))
+            envelope = json.loads(message.value.decode("utf-8"))
+            payload = envelope["payload"]
             handler = _HANDLERS.get(message.topic)
             if handler is not None:
                 await self._handle_with_retry(

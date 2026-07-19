@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
 
 from app.kafka_client import client
 from app.schemas import (
+    AdIdRequest,
     AdResponse,
     AdSearchResult,
     CreateAdRequest,
@@ -14,52 +16,231 @@ from app.schemas import (
     ProfileResponse,
     RegisterRequest,
     RegisterResponse,
+    SearchAdsRequest,
     TradeDecisionResponse,
     TradeResponse,
     UpdateAdRequest,
     UpdateProfileRequest,
 )
-from app.security import get_current_user_id
+from app.security import AuthenticationError, decode_user_id
 
-TOPIC_REGISTER = "users.register"
-TOPIC_LOGIN = "users.login"
-TOPIC_GET_PROFILE = "users.get_profile"
-TOPIC_UPDATE_PROFILE = "users.update_profile"
-TOPIC_ADS_CREATE = "ads.create"
-TOPIC_ADS_LIST_BY_OWNER = "ads.list_by_owner"
-TOPIC_ADS_UPDATE = "ads.update"
-TOPIC_ADS_DELETE = "ads.delete"
-TOPIC_ADS_LIST_AVAILABLE = "ads.list_available"
-TOPIC_ADS_SEARCH = "ads.search"
-TOPIC_TRADES_REQUEST = "trades.request"
-TOPIC_TRADES_ACCEPT = "trades.accept"
-TOPIC_TRADES_REJECT = "trades.reject"
-TOPIC_TRADES_CANCEL = "trades.cancel"
-TOPIC_NOTIFICATIONS_LIST = "notifications.list"
+TOPIC_REGISTER = "users.usuario.cadastrar"
+TOPIC_REGISTRATION_FAILED = "users.usuario.cadastro_falhou"
+TOPIC_LOGIN = "users.usuario.autenticar"
+TOPIC_AUTHENTICATION_FAILED = "users.usuario.autenticacao_falhou"
+TOPIC_GET_PROFILE = "users.perfil.consultar"
+TOPIC_UPDATE_PROFILE = "users.perfil.atualizar"
+TOPIC_PROFILE_UPDATE_FAILED = "users.perfil.atualizacao_falhou"
+TOPIC_ADS_CREATE = "ads.anuncio.criar"
+TOPIC_ADS_LIST_BY_OWNER = "ads.anuncio.consultar_proprios"
+TOPIC_ADS_UPDATE = "ads.anuncio.atualizar"
+TOPIC_ADS_DELETE = "ads.anuncio.remover"
+TOPIC_ADS_OPERATION_FAILED = "ads.anuncio.operacao_falhou"
+TOPIC_ADS_LIST_AVAILABLE = "ads.anuncio.consultar_disponiveis"
+TOPIC_ADS_SEARCH = "ads.anuncio.buscar"
+TOPIC_TRADES_REQUEST = "trades.troca.solicitar"
+TOPIC_TRADES_REQUEST_FAILED = "trades.troca.solicitacao_falhou"
+TOPIC_TRADES_ACCEPT = "trades.troca.aceitar"
+TOPIC_TRADES_REJECT = "trades.troca.recusar"
+TOPIC_TRADES_DECISION_FAILED = "trades.troca.decisao_falhou"
+TOPIC_TRADES_CANCEL = "trades.troca.cancelar"
+TOPIC_TRADES_CANCEL_FAILED = "trades.troca.cancelamento_falhou"
+TOPIC_NOTIFICATIONS_LIST = "notifications.notificacao.consultar"
 
-
-def _ad_operation_status_code(reason: str) -> int:
-    return 404 if reason == "ad_not_found" else 403
-
-
-def _trade_request_failed_status_code(reason: str) -> int:
-    return 404 if reason in ("requester_ad_not_found", "target_ad_not_found") else 400
-
-
-def _trade_decision_failed_status_code(reason: str) -> int:
-    if reason in ("trade_not_found", "target_ad_not_found"):
-        return 404
-    if reason == "forbidden":
-        return 403
-    return 409
+_PUBLIC_TOPICS = {TOPIC_REGISTER, TOPIC_LOGIN}
 
 
-def _trade_cancel_failed_status_code(reason: str) -> int:
-    if reason == "trade_not_found":
-        return 404
-    if reason == "forbidden":
-        return 403
-    return 409
+async def _handle_register(user_id: str | None, payload: dict) -> tuple[str, dict]:
+    request = RegisterRequest.model_validate(payload)
+    topic, response = await client.request(
+        TOPIC_REGISTER, request.model_dump(), tipo="Comando"
+    )
+    if topic == TOPIC_REGISTRATION_FAILED:
+        return topic, response
+    return topic, RegisterResponse(
+        id=response["user_id"], name=request.name, email=response["email"]
+    ).model_dump()
+
+
+async def _handle_login(user_id: str | None, payload: dict) -> tuple[str, dict]:
+    request = LoginRequest.model_validate(payload)
+    topic, response = await client.request(
+        TOPIC_LOGIN, request.model_dump(), tipo="Comando"
+    )
+    if topic == TOPIC_AUTHENTICATION_FAILED:
+        return topic, response
+    return topic, LoginResponse(
+        access_token=response["token"], token_type="bearer"
+    ).model_dump()
+
+
+async def _handle_get_profile(user_id: str | None, payload: dict) -> tuple[str, dict]:
+    topic, response = await client.request(
+        TOPIC_GET_PROFILE, {"user_id": user_id}, tipo="Consulta"
+    )
+    return topic, ProfileResponse(**response).model_dump()
+
+
+async def _handle_update_profile(user_id: str | None, payload: dict) -> tuple[str, dict]:
+    request = UpdateProfileRequest.model_validate(payload)
+    topic, response = await client.request(
+        TOPIC_UPDATE_PROFILE,
+        {"user_id": user_id, "name": request.name, "email": request.email},
+        tipo="Comando",
+    )
+    if topic == TOPIC_PROFILE_UPDATE_FAILED:
+        return topic, response
+    return topic, ProfileResponse(**response).model_dump()
+
+
+async def _handle_create_ad(user_id: str | None, payload: dict) -> tuple[str, dict]:
+    request = CreateAdRequest.model_validate(payload)
+    topic, response = await client.request(
+        TOPIC_ADS_CREATE,
+        {"owner_id": user_id, "title": request.title, "description": request.description},
+        tipo="Comando",
+    )
+    return topic, AdResponse(**response).model_dump()
+
+
+async def _handle_list_ads(user_id: str | None, payload: dict) -> tuple[str, list]:
+    topic, response = await client.request(
+        TOPIC_ADS_LIST_BY_OWNER, {"owner_id": user_id}, tipo="Consulta"
+    )
+    return topic, [AdResponse(**ad).model_dump() for ad in response["ads"]]
+
+
+async def _handle_update_ad(user_id: str | None, payload: dict) -> tuple[str, dict]:
+    request = UpdateAdRequest.model_validate(payload)
+    topic, response = await client.request(
+        TOPIC_ADS_UPDATE,
+        {
+            "ad_id": request.id,
+            "owner_id": user_id,
+            "title": request.title,
+            "description": request.description,
+        },
+        tipo="Comando",
+    )
+    if topic == TOPIC_ADS_OPERATION_FAILED:
+        return topic, response
+    return topic, AdResponse(**response).model_dump()
+
+
+async def _handle_delete_ad(user_id: str | None, payload: dict) -> tuple[str, dict]:
+    request = AdIdRequest.model_validate(payload)
+    topic, response = await client.request(
+        TOPIC_ADS_DELETE, {"ad_id": request.id, "owner_id": user_id}, tipo="Comando"
+    )
+    return topic, response
+
+
+async def _handle_search_available(user_id: str | None, payload: dict) -> tuple[str, list]:
+    topic, response = await client.request(
+        TOPIC_ADS_LIST_AVAILABLE, {"owner_id": user_id}, tipo="Consulta"
+    )
+    return topic, [AdSearchResult(**ad).model_dump() for ad in response]
+
+
+async def _handle_search_ads(user_id: str | None, payload: dict) -> tuple[str, list]:
+    request = SearchAdsRequest.model_validate(payload)
+    topic, response = await client.request(
+        TOPIC_ADS_SEARCH, {"owner_id": user_id, "query": request.q}, tipo="Consulta"
+    )
+    return topic, [AdSearchResult(**ad).model_dump() for ad in response]
+
+
+async def _handle_create_trade(user_id: str | None, payload: dict) -> tuple[str, dict]:
+    request = CreateTradeRequest.model_validate(payload)
+    topic, response = await client.request(
+        TOPIC_TRADES_REQUEST,
+        {
+            "requester_id": user_id,
+            "requester_ad_id": request.requester_ad_id,
+            "target_ad_id": request.target_ad_id,
+        },
+        tipo="Comando",
+    )
+    if topic == TOPIC_TRADES_REQUEST_FAILED:
+        return topic, response
+    return topic, TradeResponse(id=response["trade_id"], status=response["status"]).model_dump()
+
+
+async def _handle_accept_trade(user_id: str | None, payload: dict) -> tuple[str, dict]:
+    request = AdIdRequest.model_validate(payload)
+    topic, response = await client.request(
+        TOPIC_TRADES_ACCEPT, {"trade_id": request.id, "decider_id": user_id}, tipo="Comando"
+    )
+    if topic == TOPIC_TRADES_DECISION_FAILED:
+        return topic, response
+    return topic, TradeDecisionResponse(status=response["status"]).model_dump()
+
+
+async def _handle_reject_trade(user_id: str | None, payload: dict) -> tuple[str, dict]:
+    request = AdIdRequest.model_validate(payload)
+    topic, response = await client.request(
+        TOPIC_TRADES_REJECT, {"trade_id": request.id, "decider_id": user_id}, tipo="Comando"
+    )
+    if topic == TOPIC_TRADES_DECISION_FAILED:
+        return topic, response
+    return topic, TradeDecisionResponse(status=response["status"]).model_dump()
+
+
+async def _handle_cancel_trade(user_id: str | None, payload: dict) -> tuple[str, dict]:
+    request = AdIdRequest.model_validate(payload)
+    topic, response = await client.request(
+        TOPIC_TRADES_CANCEL, {"trade_id": request.id, "canceler_id": user_id}, tipo="Comando"
+    )
+    if topic == TOPIC_TRADES_CANCEL_FAILED:
+        return topic, response
+    return topic, TradeDecisionResponse(status=response["status"]).model_dump()
+
+
+async def _handle_list_notifications(user_id: str | None, payload: dict) -> tuple[str, list]:
+    topic, response = await client.request(
+        TOPIC_NOTIFICATIONS_LIST, {"user_id": user_id}, tipo="Consulta"
+    )
+    return topic, [NotificationResponse(**n).model_dump() for n in response]
+
+
+_HANDLERS = {
+    TOPIC_REGISTER: _handle_register,
+    TOPIC_LOGIN: _handle_login,
+    TOPIC_GET_PROFILE: _handle_get_profile,
+    TOPIC_UPDATE_PROFILE: _handle_update_profile,
+    TOPIC_ADS_CREATE: _handle_create_ad,
+    TOPIC_ADS_LIST_BY_OWNER: _handle_list_ads,
+    TOPIC_ADS_UPDATE: _handle_update_ad,
+    TOPIC_ADS_DELETE: _handle_delete_ad,
+    TOPIC_ADS_LIST_AVAILABLE: _handle_search_available,
+    TOPIC_ADS_SEARCH: _handle_search_ads,
+    TOPIC_TRADES_REQUEST: _handle_create_trade,
+    TOPIC_TRADES_ACCEPT: _handle_accept_trade,
+    TOPIC_TRADES_REJECT: _handle_reject_trade,
+    TOPIC_TRADES_CANCEL: _handle_cancel_trade,
+    TOPIC_NOTIFICATIONS_LIST: _handle_list_notifications,
+}
+
+
+async def _dispatch(
+    message: dict, user_id: str | None, auth_error: str | None
+) -> tuple[str, dict | list]:
+    topico = message.get("topico")
+    payload = message.get("payload") or {}
+
+    handler = _HANDLERS.get(topico)
+    if handler is None:
+        return "sistema.mensagem.nao_reconhecida", {"reason": "topico_desconhecido"}
+
+    if topico not in _PUBLIC_TOPICS and user_id is None:
+        return f"{topico}_nao_autorizado", {"reason": auth_error or "missing_token"}
+
+    try:
+        return await handler(user_id, payload)
+    except ValidationError:
+        return f"{topico}_falhou", {"reason": "invalid_payload"}
+    except TimeoutError:
+        return f"{topico}_falhou", {"reason": "timeout"}
 
 
 @asynccontextmanager
@@ -77,228 +258,26 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/register", response_model=RegisterResponse, status_code=201)
-async def register(request: RegisterRequest):
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+
+    token = websocket.query_params.get("token")
+    user_id: str | None = None
+    auth_error: str | None = "missing_token"
+    if token is not None:
+        try:
+            user_id = decode_user_id(token)
+            auth_error = None
+        except AuthenticationError as exc:
+            auth_error = exc.reason
+
     try:
-        topic, payload = await client.request(TOPIC_REGISTER, request.model_dump())
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Users service")
-
-    if topic == "users.registration_failed":
-        raise HTTPException(status_code=409, detail=payload["reason"])
-
-    return RegisterResponse(id=payload["user_id"], name=request.name, email=payload["email"])
-
-
-@app.post("/login", response_model=LoginResponse)
-async def login(request: LoginRequest):
-    try:
-        topic, payload = await client.request(TOPIC_LOGIN, request.model_dump())
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Users service")
-
-    if topic == "users.authentication_failed":
-        raise HTTPException(status_code=401, detail=payload["reason"])
-
-    return LoginResponse(access_token=payload["token"], token_type="bearer")
-
-
-@app.get("/me", response_model=ProfileResponse)
-async def get_profile(user_id: str = Depends(get_current_user_id)):
-    try:
-        topic, payload = await client.request(TOPIC_GET_PROFILE, {"user_id": user_id})
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Users service")
-
-    return ProfileResponse(id=payload["id"], name=payload["name"], email=payload["email"])
-
-
-@app.put("/me", response_model=ProfileResponse)
-async def update_profile(
-    request: UpdateProfileRequest, user_id: str = Depends(get_current_user_id)
-):
-    try:
-        topic, payload = await client.request(
-            TOPIC_UPDATE_PROFILE,
-            {"user_id": user_id, "name": request.name, "email": request.email},
-        )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Users service")
-
-    if topic == "users.profile_update_failed":
-        raise HTTPException(status_code=409, detail=payload["reason"])
-
-    return ProfileResponse(id=payload["id"], name=payload["name"], email=payload["email"])
-
-
-@app.post("/ads", response_model=AdResponse, status_code=201)
-async def create_ad(request: CreateAdRequest, user_id: str = Depends(get_current_user_id)):
-    try:
-        topic, payload = await client.request(
-            TOPIC_ADS_CREATE,
-            {"owner_id": user_id, "title": request.title, "description": request.description},
-        )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Ads service")
-
-    return AdResponse(id=payload["id"], title=payload["title"], description=payload["description"])
-
-
-@app.get("/ads", response_model=list[AdResponse])
-async def list_ads(user_id: str = Depends(get_current_user_id)):
-    try:
-        topic, payload = await client.request(TOPIC_ADS_LIST_BY_OWNER, {"owner_id": user_id})
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Ads service")
-
-    return [AdResponse(**ad) for ad in payload["ads"]]
-
-
-@app.put("/ads/{ad_id}", response_model=AdResponse)
-async def update_ad(
-    ad_id: str, request: UpdateAdRequest, user_id: str = Depends(get_current_user_id)
-):
-    try:
-        topic, payload = await client.request(
-            TOPIC_ADS_UPDATE,
-            {
-                "ad_id": ad_id,
-                "owner_id": user_id,
-                "title": request.title,
-                "description": request.description,
-            },
-        )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Ads service")
-
-    if topic == "ads.operation_failed":
-        raise HTTPException(
-            status_code=_ad_operation_status_code(payload["reason"]), detail=payload["reason"]
-        )
-
-    return AdResponse(id=payload["id"], title=payload["title"], description=payload["description"])
-
-
-@app.delete("/ads/{ad_id}", status_code=204)
-async def delete_ad(ad_id: str, user_id: str = Depends(get_current_user_id)):
-    try:
-        topic, payload = await client.request(
-            TOPIC_ADS_DELETE, {"ad_id": ad_id, "owner_id": user_id}
-        )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Ads service")
-
-    if topic == "ads.operation_failed":
-        raise HTTPException(
-            status_code=_ad_operation_status_code(payload["reason"]), detail=payload["reason"]
-        )
-
-    return Response(status_code=204)
-
-
-@app.get("/ads/search", response_model=list[AdSearchResult])
-async def search_ads(q: str | None = None, user_id: str = Depends(get_current_user_id)):
-    try:
-        if q:
-            topic, payload = await client.request(
-                TOPIC_ADS_SEARCH, {"owner_id": user_id, "query": q}
+        while True:
+            message = await websocket.receive_json()
+            topico, response_payload = await _dispatch(message, user_id, auth_error)
+            await websocket.send_json(
+                {"tipo": "Evento", "topico": topico, "payload": response_payload}
             )
-        else:
-            topic, payload = await client.request(
-                TOPIC_ADS_LIST_AVAILABLE, {"owner_id": user_id}
-            )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Ads service")
-
-    return [AdSearchResult(**ad) for ad in payload]
-
-
-@app.post("/trades", response_model=TradeResponse, status_code=201)
-async def create_trade(request: CreateTradeRequest, user_id: str = Depends(get_current_user_id)):
-    try:
-        topic, payload = await client.request(
-            TOPIC_TRADES_REQUEST,
-            {
-                "requester_id": user_id,
-                "requester_ad_id": request.requester_ad_id,
-                "target_ad_id": request.target_ad_id,
-            },
-        )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Trades service")
-
-    if topic == "trades.request_failed":
-        raise HTTPException(
-            status_code=_trade_request_failed_status_code(payload["reason"]),
-            detail=payload["reason"],
-        )
-
-    return TradeResponse(id=payload["trade_id"], status=payload["status"])
-
-
-@app.post("/trades/{trade_id}/accept", response_model=TradeDecisionResponse)
-async def accept_trade(trade_id: str, user_id: str = Depends(get_current_user_id)):
-    try:
-        topic, payload = await client.request(
-            TOPIC_TRADES_ACCEPT, {"trade_id": trade_id, "decider_id": user_id}
-        )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Trades service")
-
-    if topic == "trades.decision_failed":
-        raise HTTPException(
-            status_code=_trade_decision_failed_status_code(payload["reason"]),
-            detail=payload["reason"],
-        )
-
-    return TradeDecisionResponse(status=payload["status"])
-
-
-@app.post("/trades/{trade_id}/cancel", response_model=TradeDecisionResponse)
-async def cancel_trade(trade_id: str, user_id: str = Depends(get_current_user_id)):
-    try:
-        topic, payload = await client.request(
-            TOPIC_TRADES_CANCEL, {"trade_id": trade_id, "canceler_id": user_id}
-        )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Trades service")
-
-    if topic == "trades.cancel_failed":
-        raise HTTPException(
-            status_code=_trade_cancel_failed_status_code(payload["reason"]),
-            detail=payload["reason"],
-        )
-
-    return TradeDecisionResponse(status=payload["status"])
-
-
-@app.get("/notifications", response_model=list[NotificationResponse])
-async def list_notifications(user_id: str = Depends(get_current_user_id)):
-    try:
-        topic, payload = await client.request(
-            TOPIC_NOTIFICATIONS_LIST, {"user_id": user_id}
-        )
-    except TimeoutError:
-        raise HTTPException(
-            status_code=504, detail="Timed out waiting for Notifications service"
-        )
-
-    return [NotificationResponse(**notification) for notification in payload]
-
-
-@app.post("/trades/{trade_id}/reject", response_model=TradeDecisionResponse)
-async def reject_trade(trade_id: str, user_id: str = Depends(get_current_user_id)):
-    try:
-        topic, payload = await client.request(
-            TOPIC_TRADES_REJECT, {"trade_id": trade_id, "decider_id": user_id}
-        )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Timed out waiting for Trades service")
-
-    if topic == "trades.decision_failed":
-        raise HTTPException(
-            status_code=_trade_decision_failed_status_code(payload["reason"]),
-            detail=payload["reason"],
-        )
-
-    return TradeDecisionResponse(status=payload["status"])
+    except WebSocketDisconnect:
+        pass

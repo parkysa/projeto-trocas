@@ -1,31 +1,31 @@
 import uuid
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import User
 
 
 class UserRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: AsyncSession):
         self.session = session
 
-    def create(self, name: str, email: str, password_hash: str) -> User:
+    async def create(self, name: str, email: str, password_hash: str) -> User:
         user = User(name=name, email=email, password_hash=password_hash)
         self.session.add(user)
-        self.session.commit()
-        self.session.refresh(user)
+        await self.session.commit()
+        await self.session.refresh(user)
         return user
 
-    def get_by_email(self, email: str) -> User | None:
-        return self.session.scalar(select(User).where(User.email == email))
+    async def get_by_email(self, email: str) -> User | None:
+        return await self.session.scalar(select(User).where(User.email == email))
 
-    def get_by_id(self, user_id: str) -> User | None:
-        return self.session.get(User, uuid.UUID(user_id))
+    async def get_by_id(self, user_id: str) -> User | None:
+        return await self.session.get(User, uuid.UUID(user_id))
 
-    def update(self, user: User, name: str, email: str) -> User:
+    async def update(self, user: User, name: str, email: str) -> User:
         user.name = name
         user.email = email
-        self.session.commit()
-        self.session.refresh(user)
+        await self.session.commit()
+        await self.session.refresh(user)
         return user

@@ -2,34 +2,37 @@ import asyncio
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 
 from app.config import settings
 
+SERVICE_NAME = "bff"
+
 REPLY_TOPICS = (
-    "users.registered",
-    "users.registration_failed",
-    "users.authenticated",
-    "users.authentication_failed",
-    "users.profile_found",
-    "users.profile_updated",
-    "users.profile_update_failed",
-    "ads.created",
-    "ads.listed",
-    "ads.updated",
-    "ads.deleted",
-    "ads.operation_failed",
-    "ads.available_list",
-    "ads.search_result",
-    "trades.requested",
-    "trades.request_failed",
-    "trades.accepted",
-    "trades.rejected",
-    "trades.decision_failed",
-    "trades.cancelled",
-    "trades.cancel_failed",
-    "notifications.listed",
+    "users.usuario.cadastrado",
+    "users.usuario.cadastro_falhou",
+    "users.usuario.autenticado",
+    "users.usuario.autenticacao_falhou",
+    "users.perfil.encontrado",
+    "users.perfil.atualizado",
+    "users.perfil.atualizacao_falhou",
+    "ads.anuncio.criado",
+    "ads.anuncio.listado",
+    "ads.anuncio.atualizado",
+    "ads.anuncio.removido",
+    "ads.anuncio.operacao_falhou",
+    "ads.anuncio.disponiveis_listados",
+    "ads.anuncio.busca_concluida",
+    "trades.troca.solicitada",
+    "trades.troca.solicitacao_falhou",
+    "trades.troca.aprovada",
+    "trades.troca.recusada",
+    "trades.troca.decisao_falhou",
+    "trades.troca.cancelada",
+    "trades.troca.cancelamento_falhou",
+    "notifications.notificacao.listada",
 )
 
 
@@ -73,25 +76,35 @@ class KafkaRequestReplyClient:
 
                 future = self._pending.get(correlation_id)
                 if future is not None and not future.done():
-                    payload = json.loads(message.value.decode("utf-8"))
-                    future.set_result((message.topic, payload))
+                    envelope = json.loads(message.value.decode("utf-8"))
+                    future.set_result((message.topic, envelope["payload"]))
             except Exception:
                 logging.exception(
                     "Failed to process reply from topic %s", message.topic
                 )
 
     async def request(
-        self, command_topic: str, payload: dict
+        self, command_topic: str, payload: dict, tipo: str
     ) -> tuple[str, dict | list]:
         correlation_id = str(uuid.uuid4())
         future: asyncio.Future = asyncio.get_event_loop().create_future()
         self._pending[correlation_id] = future
 
+        envelope = {"tipo": tipo, "topico": command_topic, "payload": payload}
+        headers = [
+            ("event_id", str(uuid.uuid4()).encode("utf-8")),
+            ("timestamp", datetime.now(timezone.utc).isoformat().encode("utf-8")),
+            ("producer", SERVICE_NAME.encode("utf-8")),
+            ("version", b"1.0"),
+            ("topic", command_topic.encode("utf-8")),
+            ("correlation_id", correlation_id.encode("utf-8")),
+        ]
+
         try:
             await self._producer.send_and_wait(
                 command_topic,
-                json.dumps(payload).encode("utf-8"),
-                headers=[("correlation_id", correlation_id.encode("utf-8"))],
+                json.dumps(envelope).encode("utf-8"),
+                headers=headers,
             )
             return await asyncio.wait_for(
                 future, timeout=settings.bff_kafka_reply_timeout_seconds

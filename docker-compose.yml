@@ -7,9 +7,13 @@ networks:
 
 volumes:
   users-db-data:
+  users-db-replica-data:
   ads-db-data:
+  ads-db-replica-data:
   trades-db-data:
+  trades-db-replica-data:
   notifications-db-data:
+  notifications-db-replica-data:
   kafka-data:
 
 services:
@@ -47,13 +51,41 @@ services:
       POSTGRES_DB: ${USERS_DB_NAME}
       POSTGRES_USER: ${USERS_DB_USER}
       POSTGRES_PASSWORD: ${USERS_DB_PASSWORD}
+      POSTGRES_REPLICATION_USER: ${USERS_DB_REPLICATION_USER}
+      POSTGRES_REPLICATION_PASSWORD: ${USERS_DB_REPLICATION_PASSWORD}
     volumes:
       - users-db-data:/var/lib/postgresql/data
+      - ./scripts/postgres/primary-init.sh:/docker-entrypoint-initdb.d/10-setup-replication.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${USERS_DB_USER} -d ${USERS_DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - trocas-network
+
+  users-db-replica:
+    image: ${POSTGRES_IMAGE}
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_USER: ${USERS_DB_USER}
+      POSTGRES_REPLICATION_USER: ${USERS_DB_REPLICATION_USER}
+      POSTGRES_REPLICATION_PASSWORD: ${USERS_DB_REPLICATION_PASSWORD}
+      PRIMARY_HOST: users-db
+      PRIMARY_PORT: "5432"
+    volumes:
+      - users-db-replica-data:/var/lib/postgresql/data
+      - ./scripts/postgres/standby-entrypoint.sh:/scripts/standby-entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/scripts/standby-entrypoint.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${USERS_DB_USER} -d ${USERS_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    depends_on:
+      users-db:
+        condition: service_healthy
     networks:
       - trocas-network
 
@@ -63,13 +95,41 @@ services:
       POSTGRES_DB: ${ADS_DB_NAME}
       POSTGRES_USER: ${ADS_DB_USER}
       POSTGRES_PASSWORD: ${ADS_DB_PASSWORD}
+      POSTGRES_REPLICATION_USER: ${ADS_DB_REPLICATION_USER}
+      POSTGRES_REPLICATION_PASSWORD: ${ADS_DB_REPLICATION_PASSWORD}
     volumes:
       - ads-db-data:/var/lib/postgresql/data
+      - ./scripts/postgres/primary-init.sh:/docker-entrypoint-initdb.d/10-setup-replication.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${ADS_DB_USER} -d ${ADS_DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - trocas-network
+
+  ads-db-replica:
+    image: ${POSTGRES_IMAGE}
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_USER: ${ADS_DB_USER}
+      POSTGRES_REPLICATION_USER: ${ADS_DB_REPLICATION_USER}
+      POSTGRES_REPLICATION_PASSWORD: ${ADS_DB_REPLICATION_PASSWORD}
+      PRIMARY_HOST: ads-db
+      PRIMARY_PORT: "5432"
+    volumes:
+      - ads-db-replica-data:/var/lib/postgresql/data
+      - ./scripts/postgres/standby-entrypoint.sh:/scripts/standby-entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/scripts/standby-entrypoint.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ADS_DB_USER} -d ${ADS_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    depends_on:
+      ads-db:
+        condition: service_healthy
     networks:
       - trocas-network
 
@@ -79,13 +139,41 @@ services:
       POSTGRES_DB: ${TRADES_DB_NAME}
       POSTGRES_USER: ${TRADES_DB_USER}
       POSTGRES_PASSWORD: ${TRADES_DB_PASSWORD}
+      POSTGRES_REPLICATION_USER: ${TRADES_DB_REPLICATION_USER}
+      POSTGRES_REPLICATION_PASSWORD: ${TRADES_DB_REPLICATION_PASSWORD}
     volumes:
       - trades-db-data:/var/lib/postgresql/data
+      - ./scripts/postgres/primary-init.sh:/docker-entrypoint-initdb.d/10-setup-replication.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${TRADES_DB_USER} -d ${TRADES_DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - trocas-network
+
+  trades-db-replica:
+    image: ${POSTGRES_IMAGE}
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_USER: ${TRADES_DB_USER}
+      POSTGRES_REPLICATION_USER: ${TRADES_DB_REPLICATION_USER}
+      POSTGRES_REPLICATION_PASSWORD: ${TRADES_DB_REPLICATION_PASSWORD}
+      PRIMARY_HOST: trades-db
+      PRIMARY_PORT: "5432"
+    volumes:
+      - trades-db-replica-data:/var/lib/postgresql/data
+      - ./scripts/postgres/standby-entrypoint.sh:/scripts/standby-entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/scripts/standby-entrypoint.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TRADES_DB_USER} -d ${TRADES_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    depends_on:
+      trades-db:
+        condition: service_healthy
     networks:
       - trocas-network
 
@@ -95,13 +183,41 @@ services:
       POSTGRES_DB: ${NOTIFICATIONS_DB_NAME}
       POSTGRES_USER: ${NOTIFICATIONS_DB_USER}
       POSTGRES_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD}
+      POSTGRES_REPLICATION_USER: ${NOTIFICATIONS_DB_REPLICATION_USER}
+      POSTGRES_REPLICATION_PASSWORD: ${NOTIFICATIONS_DB_REPLICATION_PASSWORD}
     volumes:
       - notifications-db-data:/var/lib/postgresql/data
+      - ./scripts/postgres/primary-init.sh:/docker-entrypoint-initdb.d/10-setup-replication.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${NOTIFICATIONS_DB_USER} -d ${NOTIFICATIONS_DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - trocas-network
+
+  notifications-db-replica:
+    image: ${POSTGRES_IMAGE}
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_USER: ${NOTIFICATIONS_DB_USER}
+      POSTGRES_REPLICATION_USER: ${NOTIFICATIONS_DB_REPLICATION_USER}
+      POSTGRES_REPLICATION_PASSWORD: ${NOTIFICATIONS_DB_REPLICATION_PASSWORD}
+      PRIMARY_HOST: notifications-db
+      PRIMARY_PORT: "5432"
+    volumes:
+      - notifications-db-replica-data:/var/lib/postgresql/data
+      - ./scripts/postgres/standby-entrypoint.sh:/scripts/standby-entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/scripts/standby-entrypoint.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NOTIFICATIONS_DB_USER} -d ${NOTIFICATIONS_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    depends_on:
+      notifications-db:
+        condition: service_healthy
     networks:
       - trocas-network
 

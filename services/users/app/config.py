@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         return (
-            f"postgresql+psycopg2://{self.users_db_user}:{self.users_db_password}"
+            f"postgresql+asyncpg://{self.users_db_user}:{self.users_db_password}"
             f"@{self.users_db_host}:{self.users_db_port}/{self.users_db_name}"
         )
 

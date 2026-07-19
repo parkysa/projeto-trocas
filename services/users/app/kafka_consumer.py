@@ -13,10 +13,10 @@ from app.commands import (
 from app.config import settings
 from app.kafka_producer import producer
 
-TOPIC_REGISTER = "users.register"
-TOPIC_LOGIN = "users.login"
-TOPIC_GET_PROFILE = "users.get_profile"
-TOPIC_UPDATE_PROFILE = "users.update_profile"
+TOPIC_REGISTER = "users.usuario.cadastrar"
+TOPIC_LOGIN = "users.usuario.autenticar"
+TOPIC_GET_PROFILE = "users.perfil.consultar"
+TOPIC_UPDATE_PROFILE = "users.perfil.atualizar"
 
 _HANDLERS = {
     TOPIC_REGISTER: handle_register,
@@ -94,7 +94,8 @@ class KafkaCommandConsumer:
                     correlation_id = value.decode("utf-8")
                     break
 
-            payload = json.loads(message.value.decode("utf-8"))
+            envelope = json.loads(message.value.decode("utf-8"))
+            payload = envelope["payload"]
             handler = _HANDLERS.get(message.topic)
             if handler is not None:
                 await self._handle_with_retry(

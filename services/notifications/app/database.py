@@ -1,17 +1,18 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
 
-engine = create_engine(settings.database_url)
-SessionLocal = sessionmaker(bind=engine)
+engine = create_async_engine(settings.database_url)
+SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 class Base(DeclarativeBase):
     pass
 
 
-def create_all() -> None:
+async def create_all() -> None:
     from app import models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)

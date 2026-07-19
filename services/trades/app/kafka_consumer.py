@@ -8,10 +8,10 @@ from app.commands import handle_accept, handle_cancel, handle_reject, handle_req
 from app.config import settings
 from app.kafka_producer import producer
 
-TOPIC_REQUEST = "trades.request"
-TOPIC_ACCEPT = "trades.accept"
-TOPIC_REJECT = "trades.reject"
-TOPIC_CANCEL = "trades.cancel"
+TOPIC_REQUEST = "trades.troca.solicitar"
+TOPIC_ACCEPT = "trades.troca.aceitar"
+TOPIC_REJECT = "trades.troca.recusar"
+TOPIC_CANCEL = "trades.troca.cancelar"
 
 _HANDLERS = {
     TOPIC_REQUEST: handle_request,
@@ -89,7 +89,8 @@ class KafkaCommandConsumer:
                     correlation_id = value.decode("utf-8")
                     break
 
-            payload = json.loads(message.value.decode("utf-8"))
+            envelope = json.loads(message.value.decode("utf-8"))
+            payload = envelope["payload"]
             handler = _HANDLERS.get(message.topic)
             if handler is not None:
                 await self._handle_with_retry(

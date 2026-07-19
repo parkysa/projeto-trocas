@@ -10,7 +10,7 @@ from app.kafka_producer import producer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    create_all()
+    await create_all()
     await producer.start()
     await consumer.start()
     consumer_task = asyncio.create_task(consumer.run())

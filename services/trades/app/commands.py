@@ -1,5 +1,3 @@
-import asyncio
-
 from pydantic import ValidationError
 
 from app.ads_client import ads_client
@@ -21,25 +19,22 @@ from app.schemas import (
     TradeRequestFailedEvent,
 )
 
-TOPIC_REQUESTED = "trades.requested"
-TOPIC_REQUEST_FAILED = "trades.request_failed"
-TOPIC_ACCEPTED = "trades.accepted"
-TOPIC_REJECTED = "trades.rejected"
-TOPIC_DECISION_FAILED = "trades.decision_failed"
-TOPIC_CANCELLED = "trades.cancelled"
-TOPIC_CANCEL_FAILED = "trades.cancel_failed"
+TOPIC_REQUESTED = "trades.troca.solicitada"
+TOPIC_REQUEST_FAILED = "trades.troca.solicitacao_falhou"
+TOPIC_ACCEPTED = "trades.troca.aprovada"
+TOPIC_REJECTED = "trades.troca.recusada"
+TOPIC_DECISION_FAILED = "trades.troca.decisao_falhou"
+TOPIC_CANCELLED = "trades.troca.cancelada"
+TOPIC_CANCEL_FAILED = "trades.troca.cancelamento_falhou"
 
 
-def _create_trade(command: RequestTradeCommand) -> Trade:
-    session = SessionLocal()
-    try:
-        return TradeRepository(session).create(
+async def _create_trade(command: RequestTradeCommand) -> Trade:
+    async with SessionLocal() as session:
+        return await TradeRepository(session).create(
             requester_id=command.requester_id,
             requester_ad_id=command.requester_ad_id,
             target_ad_id=command.target_ad_id,
         )
-    finally:
-        session.close()
 
 
 async def _publish_failure(reason: str, correlation_id: str | None) -> None:
@@ -67,7 +62,7 @@ async def handle_request(payload: dict, correlation_id: str | None) -> None:
         await _publish_failure("cannot_request_own_ad", correlation_id)
         return
 
-    trade = await asyncio.to_thread(_create_trade, command)
+    trade = await _create_trade(command)
 
     event = TradeRequestedEvent(
         trade_id=str(trade.id), status=trade.status, target_owner_id=target_ad["owner_id"]
@@ -75,45 +70,36 @@ async def handle_request(payload: dict, correlation_id: str | None) -> None:
     await producer.publish(TOPIC_REQUESTED, event.model_dump(), correlation_id)
 
 
-def _load_trade(trade_id: str) -> Trade | None:
-    session = SessionLocal()
-    try:
-        return TradeRepository(session).get_by_id(trade_id)
-    finally:
-        session.close()
+async def _load_trade(trade_id: str) -> Trade | None:
+    async with SessionLocal() as session:
+        return await TradeRepository(session).get_by_id(trade_id)
 
 
-def _accept_trade(trade_id: str) -> tuple[bool, Trade | str]:
+async def _accept_trade(trade_id: str) -> tuple[bool, Trade | str]:
     """Re-validates status/conflicts and updates to ACCEPTED, atomically within one session."""
-    session = SessionLocal()
-    try:
+    async with SessionLocal() as session:
         repository = TradeRepository(session)
-        trade = repository.get_by_id(trade_id)
+        trade = await repository.get_by_id(trade_id)
         if trade is None:
             return False, "trade_not_found"
         if trade.status != "PENDING":
             return False, "trade_not_pending"
-        if repository.has_accepted_trade_for_ad(
+        if await repository.has_accepted_trade_for_ad(
             str(trade.requester_ad_id)
-        ) or repository.has_accepted_trade_for_ad(str(trade.target_ad_id)):
+        ) or await repository.has_accepted_trade_for_ad(str(trade.target_ad_id)):
             return False, "ad_already_traded"
-        return True, repository.update_status(trade, status="ACCEPTED")
-    finally:
-        session.close()
+        return True, await repository.update_status(trade, status="ACCEPTED")
 
 
-def _reject_trade(trade_id: str) -> tuple[bool, Trade | str]:
-    session = SessionLocal()
-    try:
+async def _reject_trade(trade_id: str) -> tuple[bool, Trade | str]:
+    async with SessionLocal() as session:
         repository = TradeRepository(session)
-        trade = repository.get_by_id(trade_id)
+        trade = await repository.get_by_id(trade_id)
         if trade is None:
             return False, "trade_not_found"
         if trade.status != "PENDING":
             return False, "trade_not_pending"
-        return True, repository.update_status(trade, status="REJECTED")
-    finally:
-        session.close()
+        return True, await repository.update_status(trade, status="REJECTED")
 
 
 async def _publish_decision_failed(reason: str, correlation_id: str | None) -> None:
@@ -137,7 +123,7 @@ async def handle_accept(payload: dict, correlation_id: str | None) -> None:
     except ValidationError:
         return
 
-    trade = await asyncio.to_thread(_load_trade, command.trade_id)
+    trade = await _load_trade(command.trade_id)
     if trade is None:
         await _publish_decision_failed("trade_not_found", correlation_id)
         return
@@ -150,7 +136,7 @@ async def handle_accept(payload: dict, correlation_id: str | None) -> None:
         await _publish_decision_failed(failure_reason, correlation_id)
         return
 
-    success, result = await asyncio.to_thread(_accept_trade, command.trade_id)
+    success, result = await _accept_trade(command.trade_id)
     if not success:
         await _publish_decision_failed(result, correlation_id)
         return
@@ -170,7 +156,7 @@ async def handle_reject(payload: dict, correlation_id: str | None) -> None:
     except ValidationError:
         return
 
-    trade = await asyncio.to_thread(_load_trade, command.trade_id)
+    trade = await _load_trade(command.trade_id)
     if trade is None:
         await _publish_decision_failed("trade_not_found", correlation_id)
         return
@@ -183,7 +169,7 @@ async def handle_reject(payload: dict, correlation_id: str | None) -> None:
         await _publish_decision_failed(failure_reason, correlation_id)
         return
 
-    success, result = await asyncio.to_thread(_reject_trade, command.trade_id)
+    success, result = await _reject_trade(command.trade_id)
     if not success:
         await _publish_decision_failed(result, correlation_id)
         return
@@ -194,20 +180,17 @@ async def handle_reject(payload: dict, correlation_id: str | None) -> None:
     await producer.publish(TOPIC_REJECTED, event.model_dump(), correlation_id)
 
 
-def _cancel_trade(command: CancelTradeCommand) -> tuple[bool, Trade | str]:
-    session = SessionLocal()
-    try:
+async def _cancel_trade(command: CancelTradeCommand) -> tuple[bool, Trade | str]:
+    async with SessionLocal() as session:
         repository = TradeRepository(session)
-        trade = repository.get_by_id(command.trade_id)
+        trade = await repository.get_by_id(command.trade_id)
         if trade is None:
             return False, "trade_not_found"
         if trade.status != "PENDING":
             return False, "trade_not_pending"
         if str(trade.requester_id) != command.canceler_id:
             return False, "forbidden"
-        return True, repository.update_status(trade, status="CANCELLED")
-    finally:
-        session.close()
+        return True, await repository.update_status(trade, status="CANCELLED")
 
 
 async def handle_cancel(payload: dict, correlation_id: str | None) -> None:
@@ -216,7 +199,7 @@ async def handle_cancel(payload: dict, correlation_id: str | None) -> None:
     except ValidationError:
         return
 
-    success, result = await asyncio.to_thread(_cancel_trade, command)
+    success, result = await _cancel_trade(command)
     if not success:
         event = TradeCancelFailedEvent(reason=result)
         await producer.publish(TOPIC_CANCEL_FAILED, event.model_dump(), correlation_id)

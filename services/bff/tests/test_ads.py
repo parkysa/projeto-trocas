@@ -6,48 +6,84 @@ from app.main import app
 client = TestClient(app)
 
 
-def _auth_header(user_id: str = "user-123") -> dict:
+def _ws_url(user_id: str = "user-123") -> str:
     token = jwt.encode({"sub": user_id}, "test-secret", algorithm="HS256")
-    return {"Authorization": f"Bearer {token}"}
+    return f"/ws?token={token}"
 
 
 def test_create_ad_requires_authentication():
-    response = client.post(
-        "/ads", json={"title": "Notebook", "description": "Em bom estado."}
-    )
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json(
+            {
+                "tipo": "Comando",
+                "topico": "ads.anuncio.criar",
+                "payload": {"title": "Notebook", "description": "Em bom estado."},
+            }
+        )
+        response = ws.receive_json()
 
-    assert response.status_code == 401
+    assert response["topico"] == "ads.anuncio.criar_nao_autorizado"
+    assert response["payload"]["reason"] == "missing_token"
 
 
 def test_create_ad_rejects_missing_fields():
-    response = client.post("/ads", headers=_auth_header(), json={"title": "Notebook"})
+    with client.websocket_connect(_ws_url()) as ws:
+        ws.send_json(
+            {"tipo": "Comando", "topico": "ads.anuncio.criar", "payload": {"title": "Notebook"}}
+        )
+        response = ws.receive_json()
 
-    assert response.status_code == 422
+    assert response["topico"] == "ads.anuncio.criar_falhou"
+    assert response["payload"]["reason"] == "invalid_payload"
 
 
 def test_list_ads_requires_authentication():
-    response = client.get("/ads")
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json(
+            {"tipo": "Consulta", "topico": "ads.anuncio.consultar_proprios", "payload": {}}
+        )
+        response = ws.receive_json()
 
-    assert response.status_code == 401
+    assert response["topico"] == "ads.anuncio.consultar_proprios_nao_autorizado"
+    assert response["payload"]["reason"] == "missing_token"
 
 
 def test_update_ad_requires_authentication():
-    response = client.put(
-        "/ads/some-id", json={"title": "Notebook", "description": "Em bom estado."}
-    )
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json(
+            {
+                "tipo": "Comando",
+                "topico": "ads.anuncio.atualizar",
+                "payload": {"id": "some-id", "title": "Notebook", "description": "Em bom estado."},
+            }
+        )
+        response = ws.receive_json()
 
-    assert response.status_code == 401
+    assert response["topico"] == "ads.anuncio.atualizar_nao_autorizado"
+    assert response["payload"]["reason"] == "missing_token"
 
 
 def test_update_ad_rejects_missing_fields():
-    response = client.put(
-        "/ads/some-id", headers=_auth_header(), json={"title": "Notebook"}
-    )
+    with client.websocket_connect(_ws_url()) as ws:
+        ws.send_json(
+            {
+                "tipo": "Comando",
+                "topico": "ads.anuncio.atualizar",
+                "payload": {"id": "some-id", "title": "Notebook"},
+            }
+        )
+        response = ws.receive_json()
 
-    assert response.status_code == 422
+    assert response["topico"] == "ads.anuncio.atualizar_falhou"
+    assert response["payload"]["reason"] == "invalid_payload"
 
 
 def test_delete_ad_requires_authentication():
-    response = client.delete("/ads/some-id")
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json(
+            {"tipo": "Comando", "topico": "ads.anuncio.remover", "payload": {"id": "some-id"}}
+        )
+        response = ws.receive_json()
 
-    assert response.status_code == 401
+    assert response["topico"] == "ads.anuncio.remover_nao_autorizado"
+    assert response["payload"]["reason"] == "missing_token"

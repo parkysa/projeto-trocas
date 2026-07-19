@@ -6,29 +6,64 @@ client = TestClient(app)
 
 
 def test_register_rejects_missing_fields():
-    response = client.post("/register", json={"name": "Joao"})
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json(
+            {
+                "tipo": "Comando",
+                "topico": "users.usuario.cadastrar",
+                "payload": {"name": "Joao"},
+            }
+        )
+        response = ws.receive_json()
 
-    assert response.status_code == 422
+    assert response["topico"] == "users.usuario.cadastrar_falhou"
+    assert response["payload"]["reason"] == "invalid_payload"
 
 
 def test_register_rejects_invalid_email():
-    response = client.post(
-        "/register",
-        json={"name": "Joao", "email": "not-an-email", "password": "12345678"},
-    )
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json(
+            {
+                "tipo": "Comando",
+                "topico": "users.usuario.cadastrar",
+                "payload": {
+                    "name": "Joao",
+                    "email": "not-an-email",
+                    "password": "12345678",
+                },
+            }
+        )
+        response = ws.receive_json()
 
-    assert response.status_code == 422
+    assert response["topico"] == "users.usuario.cadastrar_falhou"
+    assert response["payload"]["reason"] == "invalid_payload"
 
 
 def test_login_rejects_missing_password():
-    response = client.post("/login", json={"email": "joao@email.com"})
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json(
+            {
+                "tipo": "Comando",
+                "topico": "users.usuario.autenticar",
+                "payload": {"email": "joao@email.com"},
+            }
+        )
+        response = ws.receive_json()
 
-    assert response.status_code == 422
+    assert response["topico"] == "users.usuario.autenticar_falhou"
+    assert response["payload"]["reason"] == "invalid_payload"
 
 
 def test_login_rejects_invalid_email():
-    response = client.post(
-        "/login", json={"email": "not-an-email", "password": "12345678"}
-    )
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json(
+            {
+                "tipo": "Comando",
+                "topico": "users.usuario.autenticar",
+                "payload": {"email": "not-an-email", "password": "12345678"},
+            }
+        )
+        response = ws.receive_json()
 
-    assert response.status_code == 422
+    assert response["topico"] == "users.usuario.autenticar_falhou"
+    assert response["payload"]["reason"] == "invalid_payload"

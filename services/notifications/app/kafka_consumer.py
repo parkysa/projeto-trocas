@@ -15,12 +15,12 @@ from app.commands import (
 from app.config import settings
 from app.kafka_producer import producer
 
-TOPIC_USER_REGISTERED = "users.registered"
-TOPIC_TRADE_REQUESTED = "trades.requested"
-TOPIC_TRADE_ACCEPTED = "trades.accepted"
-TOPIC_TRADE_REJECTED = "trades.rejected"
-TOPIC_TRADE_CANCELLED = "trades.cancelled"
-TOPIC_LIST = "notifications.list"
+TOPIC_USER_REGISTERED = "users.usuario.cadastrado"
+TOPIC_TRADE_REQUESTED = "trades.troca.solicitada"
+TOPIC_TRADE_ACCEPTED = "trades.troca.aprovada"
+TOPIC_TRADE_REJECTED = "trades.troca.recusada"
+TOPIC_TRADE_CANCELLED = "trades.troca.cancelada"
+TOPIC_LIST = "notifications.notificacao.consultar"
 
 _HANDLERS = {
     TOPIC_USER_REGISTERED: handle_user_registered,
@@ -102,7 +102,8 @@ class KafkaCommandConsumer:
                     correlation_id = value.decode("utf-8")
                     break
 
-            payload = json.loads(message.value.decode("utf-8"))
+            envelope = json.loads(message.value.decode("utf-8"))
+            payload = envelope["payload"]
             handler = _HANDLERS.get(message.topic)
             if handler is not None:
                 await self._handle_with_retry(
